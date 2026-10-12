@@ -452,7 +452,6 @@ scoring), so we do not claim the "Content moderation AI" module.
   server-side betting engine, the real-time gateway, the friends system, gamification,
   analytics, admin and moderation pages, legal pages, deployment fixes and this README. All the generated code
   was reviewed, run and tested end to end, and Miguel can explain and modify it.
-- Commits produced with AI assistance carry a `Co-Authored-By` trailer.
 
 ## Known limitations
 
