@@ -119,9 +119,10 @@ export default function RewardsPage() {
           {progress.achievements.map((a) => (
             <li
               key={a.code}
-              className={`flex items-start gap-3 rounded-lg border p-3 ${a.unlocked ? 'border-accent/50 bg-accent/5' : 'border-line opacity-60'}`}
+              className={`flex items-start gap-3 rounded-lg border p-3 ${a.unlocked ? 'border-accent/50 bg-accent/5' : 'border-line'}`}
             >
-              <span aria-hidden="true" className={`text-2xl ${a.unlocked ? '' : 'grayscale'}`}>{a.icon}</span>
+              {/* Locked: only the icon is dimmed, the text keeps a readable contrast */}
+              <span aria-hidden="true" className={`text-2xl ${a.unlocked ? '' : 'opacity-40 grayscale'}`}>{a.icon}</span>
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm font-bold text-text">{a.name}</span>

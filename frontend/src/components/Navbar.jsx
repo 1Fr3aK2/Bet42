@@ -78,7 +78,7 @@ export default function Navbar({ onRegisterClick, onLoginClick, onSettingsClick,
     <header className="no-print border-b border-line bg-bg">
       <nav className="navbar" aria-label="Main">
         <div className="flex items-center gap-4">
-          <NavLink to="/" className="logo no-underline" aria-label="Transcendence home">
+          <NavLink to="/" className="logo no-underline" title="Home">
             <span className="logo-text">Transcendence</span>
             <span className="logo-tag">Beta</span>
           </NavLink>
