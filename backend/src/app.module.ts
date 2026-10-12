@@ -11,6 +11,7 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { PublicApiModule } from './public-api/public-api.module';
 import { BetsModule } from './bets/bets.module';
 import { GamificationModule } from './gamification/gamification.module';
+import { AnalyticsModule } from './analytics/analytics.module';
 import { RealtimeModule } from './realtime/realtime.module';
 
 @Module({
@@ -27,6 +28,7 @@ import { RealtimeModule } from './realtime/realtime.module';
     PublicApiModule,
     BetsModule,
     GamificationModule,
+    AnalyticsModule,
     RealtimeModule,
   ],
   controllers: [],
