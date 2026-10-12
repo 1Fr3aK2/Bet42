@@ -121,7 +121,10 @@ export function AppProvider({ children }) {
 
   // Any 401 from the API means the token is no longer valid.
   useEffect(() => {
-    const onExpired = () => logout('Your session has ended. Please log in again.');
+    const onExpired = () => {
+      // Several requests can fail at once: log out only the first time.
+      if (localStorage.getItem('token')) logout('Your session has ended. Please log in again.');
+    };
     window.addEventListener(SESSION_EXPIRED_EVENT, onExpired);
     return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired);
   }, [logout]);

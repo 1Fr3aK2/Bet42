@@ -40,7 +40,14 @@ export async function apiFetch(path, { method = 'GET', body, token, raw = false,
   if (response.status === 204) return null;
 
   const text = await response.text();
-  return text ? JSON.parse(text) : null;
+  if (!text) return null;
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    // e.g. an HTML error page from the proxy while the backend restarts
+    throw new Error('Unexpected response from the server. Please try again.');
+  }
 }
 
 // Builds "?a=1&b=2", skipping empty values.

@@ -159,7 +159,7 @@ function useAnalytics(fetcher, query, liveEvents) {
 
 function HeroFigure({ label, value, tone, hint }) {
   return (
-    <div className="rounded-lg border border-line bg-panel p-5 md:col-span-2">
+    <div className="col-span-2 rounded-lg border border-line bg-panel p-5">
       <div className="text-[10px] uppercase tracking-[0.18em] text-dim">{label}</div>
       <div className={`mt-2 text-5xl font-bold ${tone === 'up' ? 'text-up' : tone === 'down' ? 'text-down' : 'text-text'}`}>
         {value}
