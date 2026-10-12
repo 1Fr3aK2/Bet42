@@ -77,6 +77,7 @@ in the [README](../README.md); a demo script for the evaluation is in
 | Rootless Docker cannot bind 80/443 | `make` fails on rootless machines | Detected; 8443/8080 used automatically |
 | Backend `.dockerignore` inside `src/` | Host `node_modules` copied into the image | Moved to the build context root |
 | Frontend health check on `localhost` (IPv6) | Frontend never healthy, nginx never started | `127.0.0.1` |
+| npm downloads timed out during the image build on a slow network | `make` stopped with ETIMEDOUT | npm retries and longer timeouts in both Dockerfiles |
 
 ## 4. Modules (22 points)
 
