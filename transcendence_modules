@@ -1,38 +1,23 @@
-IV.1 Web
-Major: Use a framework for both the frontend and backend.
-// Major: Implement real-time features using WebSockets or similar technology.
-Major: Allow users to interact with other users. The minimum requirements are:
-Major: A public API to interact with the database with a secured API key, rate limiting, documentation, and at least 5 endpoints
-//Minor: Use an ORM for the database.
-//Minor: Implement advanced search functionality with filters, sorting, and pagina-tion.
-//Minor: File upload and management system (bi acesso casa de apostas; upload imagem utilizador}
+Final module list (details, points and owners: README.md, section "Modules")
 
-IV.2 Accessibility and Internationalization
-Minor: Support for multiple languages (at least 3 languages)
-Minor: Support for additional browsers
+Major (2 points each)
+- IV.1 Web: Use a framework for both the frontend and backend (React + NestJS)
+- IV.1 Web: Real-time features using WebSockets (Socket.IO)
+- IV.1 Web: Public API with secured API key, rate limiting, documentation, 8 endpoints
+- IV.3 User Management: Standard user management (profile, avatar, friends + online status, profile page)
+- IV.3 User Management: Advanced permissions system (user CRUD, roles, role-based views)
+- IV.5 Cybersecurity: WAF/ModSecurity (hardened) + HashiCorp Vault
+- IV.7 DevOps: Log management with ELK
+- IV.7 DevOps: Monitoring with Prometheus and Grafana
+- IV.8 Data and Analytics: Advanced analytics dashboard
 
-IV.3 User Management
-Major: Standard user management and authentication
-	// Minor: Implement remote authentication with OAuth 2.0
-Major: Advanced permissions system:
-// Minor: User activity analytics and insights dashboard
+Minor (1 point each)
+- IV.1 Web: ORM (Prisma)
+- IV.1 Web: Advanced search with filters, sorting and pagination (forum)
+- IV.6 Gaming and UX: Gamification system (achievements, XP/levels, leaderboard, daily bonus)
+- IV.7 DevOps: Health check, status page, automated backups and disaster recovery
 
-IV.4 Artificial Intelligence
-//Major: Implement a complete RAG (Retrieval-Augmented Generation) system.
-//Major: Recommendation system using machine learning
+Total: 9 x 2 + 4 x 1 = 22 points (14 required + bonus, max 5)
 
-IV.5 Cybersecurity
-Major: Implement WAF/ModSecurity (hardened) + HashiCorp Vault for secrets
-
-IV.7 Devops ?
-
-IV.8 Data and Analytics
-// Minor: GDPR compliance features
-
-IV.9 Blockchain
-Major: Store tournament scores on the Blockchain.
-
-
-
-Error response from daemon: failed to set up container networking: driver failed programming external connectivity on endpoint nginx (6f85fc9daf4895419bb965f3073b2ee8d7a07d64a89ac378ef7f3038c70bb675): error while calling RootlessKit PortManager.AddPort(): cannot expose privileged port 80, you can add 'net.ipv4.ip_unprivileged_port_start=80' to /etc/sysctl.conf (currently 1024), or set CAP_NET_BIND_SERVICE on rootlesskit binary, or choose a larger port number (>= 1024): listen tcp4 0.0.0.0:80: bind: permission denied
-make: *** [Makefile:13: up] Error 1
+Dropped from the first plan: blockchain (Avalanche/Solidity requires tournaments),
+multiple languages, additional browsers, OAuth, RAG, recommendation system.
