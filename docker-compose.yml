@@ -412,6 +412,9 @@ services:
     environment:
       LS_JAVA_OPTS: "-Xms256m -Xmx256m"
       ELASTIC_PASSWORD: "${ELASTIC_PASSWORD}"
+      # Logstash's own X-Pack monitoring is not used; without credentials it
+      # logged a 401 error every 30 seconds.
+      XPACK_MONITORING_ENABLED: "false"
     mem_limit: 512m
     volumes:
       - ./logging/logstash/pipeline:/usr/share/logstash/pipeline:ro
