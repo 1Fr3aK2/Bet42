@@ -88,6 +88,30 @@ The backend accepts the field only if it is a PNG/JPEG/WebP/GIF data URL made
 of base64 characters (max 200,000 characters), so the excluded field cannot
 carry an injection payload either.
 
+## `before-crs.conf` — monitoring queries (`id:1000002`, `id:1000003`)
+
+Grafana's browser UI sends every panel query to `/grafana/api/ds/query`, and
+the Prometheus UI sends them to `/prometheus/api/v1/...`. PromQL such as
+`sum(rate(http_requests_total[1m])) by (route)` matches SQL injection
+(`942150`, `942200`, `942410`, `942430`) and command injection (`932240`)
+patterns, and legend templates like `{{route}}` match the AngularJS template
+injection rule (`941380`). Every dashboard panel using `by (...)`, including
+*Backend - Requests/sec by route* and *Backend - p95 Latency by route*, showed
+"No data" because the request was blocked with a 403.
+
+The exclusions remove only the query fields (`expr` and `legendFormat` of the
+first three queries for Grafana, `query` and `match[]` for Prometheus) from
+the SQLi, RCE and XSS categories, and only on those two read-only endpoints
+(Grafana's also requires a login). Other parameters of the same requests and
+every other URL are still inspected:
+
+| Test | Result |
+|------|--------|
+| Dashboard *Infra Status* in Grafana | all panels load, no 403 |
+| `GET /prometheus/api/v1/query?query=sum(rate(...)) by (route)` | 200 |
+| same endpoint with `x=<script>alert(1)</script>` | 403 (WAF) |
+| `GET /prometheus/graph?q=1' OR 1=1--` | 403 (WAF) |
+
 ## `exclusions.conf` — Vite dev server false positive
 
 ```apache

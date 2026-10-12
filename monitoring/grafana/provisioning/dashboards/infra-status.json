@@ -200,7 +200,7 @@
       "type": "stat",
       "gridPos": { "h": 4, "w": 6, "x": 18, "y": 37 },
       "targets": [
-        { "expr": "sum(increase(bets_settled_total{status=\"WON\"}[1h])) / clamp_min(sum(increase(bets_settled_total{status=~\"WON|LOST\"}[1h])), 1)", "refId": "A" }
+        { "expr": "(sum(increase(bets_settled_total{status=\"WON\"}[1h])) or vector(0)) / clamp_min(sum(increase(bets_settled_total{status=~\"WON|LOST\"}[1h])) or vector(0), 1)", "refId": "A" }
       ],
       "fieldConfig": {
         "defaults": { "unit": "percentunit", "decimals": 1 }
