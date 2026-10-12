@@ -68,7 +68,8 @@ services:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8000/health"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      # The backend compiles TypeScript when it starts: leave time for slower machines.
+      retries: 12
       start_period: 30s
     restart: unless-stopped
 
@@ -82,7 +83,8 @@ services:
       backend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:5173"]
+      # 127.0.0.1, not localhost: inside the container localhost resolves to IPv6 first.
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:5173"]
       interval: 10s
       timeout: 5s
       retries: 5
