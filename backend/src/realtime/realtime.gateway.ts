@@ -10,7 +10,9 @@ import { JwtService } from '@nestjs/jwt';
 import { InjectMetric } from '@willsoto/nestjs-prometheus';
 import { Gauge } from 'prom-client';
 import { Server, Socket } from 'socket.io';
+import { FriendshipStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { PresenceService } from './presence.service';
 import {
   CryptoTicker,
   KRAKEN_SYMBOLS,
@@ -32,7 +34,7 @@ const userRoom = (userId: number) => `user:${userId}`;
 //                      feed:settled, presence:update, leaderboard:changed
 //   to one user's tabs bet:placed, bet:settled, wallet:update,
 //                      achievement:unlocked, level:up, session:refresh,
-//                      session:revoked
+//                      session:revoked, friends:update, friend:presence
 @WebSocketGateway({
   cors: {
     origin: '*',
@@ -43,9 +45,6 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   server: Server;
 
   private readonly logger = new Logger(RealtimeGateway.name);
-
-  // userId -> number of open sockets (a user can have several tabs).
-  private readonly onlineUsers = new Map<number, number>();
   private connections = 0;
 
   private readonly pendingTickers = new Map<string, CryptoTicker>();
@@ -56,6 +55,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     private readonly jwt: JwtService,
     private readonly prisma: PrismaService,
     private readonly kraken: KrakenService,
+    private readonly presence: PresenceService,
     @InjectMetric('ws_connected_clients')
     private readonly connectedGauge: Gauge<string>,
   ) {}
@@ -80,7 +80,9 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
         if (user) {
           client.data.userId = user.id;
           client.join(userRoom(user.id));
-          this.onlineUsers.set(user.id, (this.onlineUsers.get(user.id) ?? 0) + 1);
+          if (this.presence.connect(user.id)) {
+            this.notifyFriends(user.id, true);
+          }
         } else {
           client.emit('session:revoked', { reason: 'Account not found' });
         }
@@ -105,20 +107,38 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     this.connections = Math.max(0, this.connections - 1);
 
     const userId = client.data.userId;
-    if (userId) {
-      const sockets = (this.onlineUsers.get(userId) ?? 1) - 1;
-      if (sockets > 0) this.onlineUsers.set(userId, sockets);
-      else this.onlineUsers.delete(userId);
+    if (userId && this.presence.disconnect(userId)) {
+      this.notifyFriends(userId, false);
     }
 
     this.broadcastPresence();
+  }
+
+  // Tells the user's friends that they came online or went offline.
+  private async notifyFriends(userId: number, online: boolean) {
+    try {
+      const friendships = await this.prisma.friendship.findMany({
+        where: {
+          status: FriendshipStatus.ACCEPTED,
+          OR: [{ senderId: userId }, { receiverId: userId }],
+        },
+        select: { senderId: true, receiverId: true },
+      });
+
+      for (const f of friendships) {
+        const friendId = f.senderId === userId ? f.receiverId : f.senderId;
+        this.server.to(userRoom(friendId)).emit('friend:presence', { userId, online });
+      }
+    } catch (error) {
+      this.logger.warn(`Could not notify friends of ${userId}: ${error.message}`);
+    }
   }
 
   private broadcastPresence() {
     this.connectedGauge.set(this.connections);
     this.server.emit('presence:update', {
       connections: this.connections,
-      traders: this.onlineUsers.size,
+      traders: this.presence.onlineCount(),
     });
   }
 
@@ -182,8 +202,17 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       .to(userRoom(userId))
       .emit('session:revoked', { reason: 'Your account has been deleted' });
     this.server.in(userRoom(userId)).disconnectSockets(true);
-    this.onlineUsers.delete(userId);
+    this.presence.remove(userId);
     this.scheduleLeaderboardUpdate();
+  }
+
+  // A friend request was sent, accepted, declined or a friend removed:
+  // both users reload their friends list.
+  @OnEvent('friends.changed')
+  handleFriendsChanged({ userIds }: { userIds: number[] }) {
+    for (const id of userIds) {
+      this.server.to(userRoom(id)).emit('friends:update');
+    }
   }
 
   private scheduleLeaderboardUpdate() {

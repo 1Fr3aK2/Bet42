@@ -65,6 +65,31 @@ model User {
   bets         Bet[]
   transactions WalletTransaction[]
   achievements UserAchievement[]
+
+  friendshipsSent     Friendship[] @relation("FriendshipSender")
+  friendshipsReceived Friendship[] @relation("FriendshipReceiver")
+}
+
+enum FriendshipStatus {
+  PENDING
+  ACCEPTED
+}
+
+// Friend request from sender to receiver. ACCEPTED = they are friends.
+// Declining or removing a friend deletes the row.
+model Friendship {
+  id         Int              @id @default(autoincrement())
+  senderId   Int
+  receiverId Int
+  status     FriendshipStatus @default(PENDING)
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  sender   User @relation("FriendshipSender", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver User @relation("FriendshipReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@unique([senderId, receiverId])
+  @@index([receiverId, status])
 }
 
 // One prediction: "the price of <coin> will be UP/DOWN in <duration> seconds".

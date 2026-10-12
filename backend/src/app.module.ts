@@ -13,6 +13,7 @@ import { BetsModule } from './bets/bets.module';
 import { GamificationModule } from './gamification/gamification.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { RealtimeModule } from './realtime/realtime.module';
+import { FriendsModule } from './friends/friends.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { RealtimeModule } from './realtime/realtime.module';
     GamificationModule,
     AnalyticsModule,
     RealtimeModule,
+    FriendsModule,
   ],
   controllers: [],
   providers: [],
