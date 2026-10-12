@@ -460,4 +460,5 @@ scoring), so we do not claim the "Content moderation AI" module.
   for more than 2 minutes after a bet expires, the bet is refunded.
 - The application is tested on the latest stable Google Chrome only.
 - Prometheus is reachable through nginx without a login (Grafana and Kibana require one).
+- Filebeat reads the logs of every Docker container on the host, not only this project's.
 - Without `mkcert`, the self-made certificate authority must be accepted in the browser.
