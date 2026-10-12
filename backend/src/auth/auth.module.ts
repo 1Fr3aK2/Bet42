@@ -42,6 +42,8 @@ import { RolesGuard } from './roles.guard';
 
   exports: [
     RolesGuard,
+    // Used by RealtimeGateway to authenticate WebSocket connections.
+    JwtModule,
   ],
 })
 export class AuthModule {}
