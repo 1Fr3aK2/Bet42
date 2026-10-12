@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { registerUser } from '../api/users';
+import { checkAvailability, registerUser } from '../api/users';
 import { loginUser } from '../api/auth';
 import { useApp } from '../context/AppContext';
 import { Button, ErrorMessage, Field, Modal, inputClass } from './ui';
@@ -33,6 +33,16 @@ export default function RegisterModal({ onClose, onSwitchToLogin }) {
     setError('');
     setLoading(true);
     try {
+      // Check uniqueness first, so a taken name is a field error, not a failed request.
+      const available = await checkAvailability(form);
+      if (!available.username || !available.email) {
+        setErrors({
+          username: available.username ? '' : 'This username is already taken',
+          email: available.email ? '' : 'An account already uses this email',
+        });
+        return;
+      }
+
       await registerUser(form);
 
       // Registration doesn't return a token, so log in right after

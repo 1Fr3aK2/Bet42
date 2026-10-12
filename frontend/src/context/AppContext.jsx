@@ -23,6 +23,24 @@ function readStoredUser() {
   }
 }
 
+// Drops a saved token that has already expired (checked locally from the
+// JWT "exp" claim), so the first page load does not send a doomed request.
+function readStoredToken() {
+  const token = localStorage.getItem('token');
+  if (!token) return null;
+
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+    if (payload.exp && payload.exp * 1000 > Date.now()) return token;
+  } catch {
+    // malformed token
+  }
+
+  localStorage.removeItem('token');
+  localStorage.removeItem('currentUser');
+  return null;
+}
+
 function tickerToPrice(ticker, history) {
   return {
     price: ticker?.last ?? null,
@@ -35,7 +53,7 @@ function tickerToPrice(ticker, history) {
 }
 
 export function AppProvider({ children }) {
-  const [token, setToken] = useState(() => localStorage.getItem('token'));
+  const [token, setToken] = useState(readStoredToken);
   const [user, setUser] = useState(() => (localStorage.getItem('token') ? readStoredUser() : null));
   const [rules, setRules] = useState(null);
   const [prices, setPrices] = useState({});

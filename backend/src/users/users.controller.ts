@@ -26,6 +26,7 @@ import {
   import { AdminUpdateUserDto } from './admin-update-user.dto';
   import { DeleteAccountDto } from './delete-account.dto';
   import { ListUsersDto } from './list-users.dto';
+  import { AvailabilityDto } from './availability.dto';
 
   // Static routes (me, password) are declared before the ":id" ones.
   @Controller('users')
@@ -43,6 +44,12 @@ import {
 	@Post()
 	create(@Body() createUserDto: CreateUserDto) {
 	  return this.usersService.create(createUserDto);
+	}
+
+	// Public: is this username / email still free? (registration form)
+	@Get('availability')
+	availability(@Query() query: AvailabilityDto) {
+	  return this.usersService.availability(query);
 	}
 
 	@UseGuards(JwtAuthGuard)

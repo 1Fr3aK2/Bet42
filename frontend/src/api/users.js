@@ -10,6 +10,14 @@ export function registerUser({ username, email, password }) {
   });
 }
 
+// { username: true|false|null, email: true|false|null } — true = still free
+export function checkAvailability({ username, email }) {
+  const params = new URLSearchParams();
+  if (username) params.set('username', username.trim());
+  if (email) params.set('email', email.trim().toLowerCase());
+  return apiFetch(`/users/availability?${params}`, { token: '' });
+}
+
 // GET /users/me -> the logged-in user (username, avatar, role, wallet, xp...)
 export function getMe(token) {
   return apiFetch('/users/me', { token });

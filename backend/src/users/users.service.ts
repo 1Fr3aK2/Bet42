@@ -15,6 +15,7 @@ import { UpdateMeDto } from './update-me.dto';
 import { UpdatePasswordDto } from './update-password.dto';
 import { AdminUpdateUserDto } from './admin-update-user.dto';
 import { ListUsersDto } from './list-users.dto';
+import { AvailabilityDto } from './availability.dto';
 import { STARTING_BALANCE } from '../bets/bets.constants';
 import { levelForXp } from '../gamification/gamification.constants';
 import { avatarUrl } from '../gamification/gamification.service';
@@ -57,6 +58,46 @@ export class UsersService {
     return { ...user, level: levelForXp(user.xp), avatarUrl: avatarUrl(user) };
   }
 
+  // Usernames are unique ignoring case ("Admin" cannot copy "admin").
+  private async assertUsernameFree(username: string | undefined, exceptUserId?: number) {
+    if (!username) return;
+
+    const taken = await this.prisma.user.findFirst({
+      where: {
+        username: { equals: username, mode: 'insensitive' },
+        ...(exceptUserId && { id: { not: exceptUserId } }),
+      },
+      select: { id: true },
+    });
+
+    if (taken) {
+      throw new ConflictException('This username is already taken');
+    }
+  }
+
+  // Lets the registration form check its fields before submitting.
+  async availability(dto: AvailabilityDto) {
+    const username = dto.username?.trim();
+    const email = dto.email?.trim().toLowerCase();
+
+    const [userWithName, userWithEmail] = await Promise.all([
+      username
+        ? this.prisma.user.findFirst({
+            where: { username: { equals: username, mode: 'insensitive' } },
+            select: { id: true },
+          })
+        : null,
+      email
+        ? this.prisma.user.findUnique({ where: { email }, select: { id: true } })
+        : null,
+    ]);
+
+    return {
+      username: username ? !userWithName : null,
+      email: email ? !userWithEmail : null,
+    };
+  }
+
   private handleUniqueError(error: unknown): never {
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -89,6 +130,7 @@ export class UsersService {
   }
 
   async create(createUserDto: CreateUserDto) {
+    await this.assertUsernameFree(createUserDto.username);
     const hash = await bcrypt.hash(createUserDto.password, 10);
 
     try {
@@ -267,6 +309,8 @@ export class UsersService {
   }
 
   async updateMe(userId: number, updateMeDto: UpdateMeDto) {
+    await this.assertUsernameFree(updateMeDto.username, userId);
+
     try {
       const user = await this.prisma.user.update({
         where: {
@@ -303,6 +347,8 @@ export class UsersService {
     if (target.role === Role.ADMIN && target.id !== actorId) {
       throw new ForbiddenException('Other administrators cannot be edited');
     }
+
+    await this.assertUsernameFree(dto.username, userId);
 
     try {
       const user = await this.prisma.$transaction(async (tx) => {
