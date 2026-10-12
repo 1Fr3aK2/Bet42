@@ -19,7 +19,8 @@ modules in web, user management, security, DevOps, data and gamification.
 
 ### Key features
 
-- **Live trading game**: BTC/EUR and ETH/EUR prices streamed from Kraken, UP/DOWN bets
+- **Live trading game**: BTC/EUR and ETH/EUR prices streamed from Kraken, live
+  candlestick chart (1m / 5m / 15m, volume, entry prices of your bets), UP/DOWN bets
   with 1 or 5 minute expiry, 1.85× payout, server-side settlement.
 - **Multi-user in real time** (Socket.IO): prices, your bet results, a live feed of
   everyone's bets, online players and leaderboard updates are pushed to every browser.
@@ -143,7 +144,7 @@ and the backend, which waits for Vault, resumes on its own. Data is kept.
 |-------|------------|-----|
 | Frontend | React 18, React Router 7, Vite 5 | component model, large ecosystem, fast builds |
 | Styling | Tailwind CSS 4 + the original CSS (in a lower cascade layer) | utility classes and design tokens without rewriting the existing design |
-| Charts | Recharts | declarative React charts with tooltips |
+| Charts | Recharts; TradingView Lightweight Charts | declarative React charts; real candlestick chart with live updates |
 | Real time | Socket.IO (server and client) | rooms, reconnection and fallbacks out of the box |
 | Backend | NestJS 10 (Node.js 20, TypeScript) | modules, dependency injection, guards and validation pipes |
 | Database | PostgreSQL 16 | relational data with constraints and transactions: wallet updates must be atomic |
@@ -284,7 +285,7 @@ erDiagram
 | Registration and login | Email + password, bcrypt, JWT; validation in the browser and in NestJS DTOs; 18+ and terms checkbox | Pedro, Duarte, Miguel |
 | Profile and settings | Username, avatar (resized in the browser, default avatar generated), password change, account deletion | Pedro, Duarte, Miguel |
 | Friends | Requests by username or from a profile, accept/decline/cancel, friends list with live online status | Pedro (design), Miguel |
-| Live prices and chart | Kraken WebSocket feed, 24h stats, 10-minute chart filled from the server history | Pedro, Duarte, Miguel |
+| Live prices and chart | Kraken WebSocket feed, 24h stats, live candlestick chart (12 h of 1-minute candles, 1m/5m/15m, volume) and 10-minute line chart | Pedro, Duarte, Miguel |
 | Betting engine | Bets placed, stored and settled on the server; atomic wallet debit; 1/5 min expiry; refunds | Miguel |
 | Real-time events | Bet results, wallet, achievements, live feed, presence, leaderboard refresh over Socket.IO | Miguel, Pedro |
 | Gamification | XP/levels, 12 achievements, streaks, daily bonus, rewards page | Miguel |
@@ -328,8 +329,8 @@ erDiagram
    guards for authentication/roles and `ValidationPipe` + class-validator DTOs for every
    input. Chosen for structure and to share TypeScript/JavaScript across the team.
 2. **Real-time (Socket.IO)** — `backend/src/realtime/realtime.gateway.ts`. Prices are
-   throttled to 2 updates per second per coin and broadcast; new clients receive a
-   snapshot with the last 10 minutes. Logged-in sockets authenticate with the JWT and
+   throttled to 2 updates per second per coin and broadcast, like the live 1-minute
+   candles; new clients receive a snapshot with the last 10 minutes. Logged-in sockets authenticate with the JWT and
    join a private room (`user:<id>`) for bet results, wallet, achievements and role
    changes. Public events: live bets feed, online players, leaderboard changes. The
    client shows the connection state, reconnects automatically and resynchronises after
@@ -431,6 +432,7 @@ scoring), so we do not claim the "Content moderation AI" module.
 - React — https://react.dev ; React Router — https://reactrouter.com
 - Tailwind CSS — https://tailwindcss.com/docs
 - Recharts — https://recharts.org
+- TradingView Lightweight Charts — https://tradingview.github.io/lightweight-charts/
 - Socket.IO — https://socket.io/docs/v4
 - Kraken WebSocket API v2 — https://docs.kraken.com/api/docs/websocket-v2/ticker
 - PostgreSQL — https://www.postgresql.org/docs/16/

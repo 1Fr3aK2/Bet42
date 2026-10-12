@@ -38,6 +38,7 @@ in the [README](../README.md); a demo script for the evaluation is in
 - Settlement loop every second, idempotent, resumes bets after a restart; refunds on equal price or feed outage
 - Wallet ledger (`WalletTransaction`): every balance change recorded (stake, payout, refund, bonus, admin correction)
 - Open bets with countdown and "winning/losing/even", entry prices drawn on the chart, live feed of all players
+- Live candlestick chart (TradingView Lightweight Charts): 12 h of 1-minute candles from Kraken's REST API, kept live by the `ohlc` WebSocket channel (`GET /crypto/:coin/candles`, `crypto:candle` socket event), 1m / 5m / 15m, volume bars, OHLC legend, bet entry lines; the 10-minute line chart is still available
 
 **Real time** (`backend/src/realtime`)
 - One Socket.IO gateway: JWT on the socket, private room per user, throttled prices with a 10-minute snapshot on connect, live feed, online counter, pushes for role changes and account deletion, connection badge and automatic resync in the client

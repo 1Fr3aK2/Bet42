@@ -28,7 +28,7 @@ multi-user behaviour.
 | Module | Demo |
 |--------|------|
 | Frameworks (React + NestJS) | `frontend/src`, `backend/src` module structure |
-| WebSockets | Prices tick live; place a bet in window A → B's *Live* tab shows it; when it expires both see the result; stop the backend (`docker stop backend`) → badge shows *Reconnecting…*, start it → it resyncs |
+| WebSockets | Prices and the current candle tick live; place a bet in window A → B's *Live* tab shows it; when it expires both see the result; stop the backend (`docker stop backend`) → badge shows *Reconnecting…*, start it → it resyncs |
 | Public API | `curl -k -H "X-API-Key: $ADMIN_API_KEY" https://localhost/api/admin/users`; wrong key → 401; Swagger at `/api/admin/docs` with the header; `scripts/test-public-api.sh` |
 | Standard user management | Settings: change username and avatar (default avatar before upload); *Friends*: add a player by username, accept in the other window, online dot changes when the other window closes; public profile page |
 | Advanced permissions | Guest: can watch but not bet. User: no *Admin*/*Moderation* links, `/admin` shows *Access denied*. Admin: *Admin* page (search, view, edit balance, role USER↔MODERATOR, delete). Promote B to moderator → B's menu shows *Moderation* immediately |
