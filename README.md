@@ -94,6 +94,9 @@ The admin account (email and password) is printed by `make` and stored in `.env`
 | `make fclean` | remove this project's containers, images, volumes and certificates |
 | `make re` | `fclean` + `make` |
 
+After a reboot, run `make` again: Vault restarts sealed, `vault_init` unseals it
+and the backend, which waits for Vault, resumes on its own. Data is kept.
+
 ### Other URLs
 
 | URL | What | Access |

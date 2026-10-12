@@ -6,7 +6,8 @@ const prisma = new PrismaClient();
 
 async function main() {
 
-  await loadSecretsFromVault();
+  // Give up after 5 minutes so `make` cannot wait forever on a broken setup.
+  await loadSecretsFromVault(60);
 
   const username = process.env.ADMIN_USERNAME;
   const email = process.env.ADMIN_EMAIL;

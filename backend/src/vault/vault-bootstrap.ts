@@ -7,7 +7,30 @@ interface VaultKvResponse {
 }
 
 
-export async function loadSecretsFromVault(): Promise<void> {
+const RETRY_DELAY_MS = 5000;
+
+// Vault is sealed again after every restart of its container (e.g. after a
+// reboot) until vault_init unseals it. Instead of crashing, wait and retry,
+// so the backend recovers by itself as soon as `make` has unsealed Vault.
+export async function loadSecretsFromVault(
+  maxAttempts = Number.POSITIVE_INFINITY,
+): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await loadSecretsOnce();
+      if (attempt > 1) console.log('[vault] secrets loaded');
+      return;
+    } catch (error) {
+      if (attempt >= maxAttempts) throw error;
+      console.warn(
+        `[vault] not ready (${error.message.split('\n')[0]}), retrying in ${RETRY_DELAY_MS / 1000}s`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+    }
+  }
+}
+
+async function loadSecretsOnce(): Promise<void> {
   const vaultAddr = process.env.VAULT_ADDR; // ex: https://vault:8200
 
   if (!vaultAddr) {
