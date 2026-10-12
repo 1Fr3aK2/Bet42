@@ -1,18 +1,23 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import ProfileDropdown from './ProfileDropdown';
 import ConnectionBadge from './ConnectionBadge';
-import { useApp } from '../context/AppContext';
+import { useApp, useSocketEvent } from '../context/AppContext';
+import { getFriends } from '../api/friends';
 
 // Links depend on the role: guests see the public pages, logged-in users
 // their dashboards, moderators and admins their tools.
-function navLinks(user) {
+function navLinks(user, pendingRequests) {
   const links = [
     { to: '/', label: 'Trade', end: true },
     { to: '/leaderboard', label: 'Leaderboard' },
   ];
   if (user) {
-    links.push({ to: '/rewards', label: 'Rewards' }, { to: '/dashboard', label: 'Dashboard' });
+    links.push(
+      { to: '/friends', label: 'Friends', badge: pendingRequests },
+      { to: '/rewards', label: 'Rewards' },
+      { to: '/dashboard', label: 'Dashboard' },
+    );
   }
   if (user?.role === 'MODERATOR' || user?.role === 'ADMIN') {
     links.push({ to: '/moderation', label: 'Moderation' });
@@ -33,10 +38,41 @@ export default function Navbar({ onRegisterClick, onLoginClick, onSettingsClick,
   const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
 
+  const [pendingRequests, setPendingRequests] = useState(0);
+  const userId = user?.id;
+
   // Close the mobile menu after navigating.
   useEffect(() => setMenuOpen(false), [location.pathname]);
 
-  const links = navLinks(user);
+  // Number of friend requests waiting for an answer (badge on "Friends").
+  const loadRequests = useCallback(() => {
+    if (!userId) {
+      setPendingRequests(0);
+      return;
+    }
+    getFriends()
+      .then((data) => setPendingRequests(data.incoming.length))
+      .catch(() => {});
+  }, [userId]);
+
+  useEffect(() => {
+    loadRequests();
+  }, [loadRequests]);
+
+  useSocketEvent('friends:update', loadRequests);
+
+  const links = navLinks(user, pendingRequests);
+
+  const renderLink = (link) => (
+    <NavLink key={link.to} to={link.to} end={link.end} className={linkClass}>
+      {link.label}
+      {link.badge > 0 && (
+        <span className="ml-1.5 rounded-full bg-accent px-1.5 text-[10px] text-bg" aria-label={`${link.badge} pending`}>
+          {link.badge}
+        </span>
+      )}
+    </NavLink>
+  );
 
   return (
     <header className="no-print border-b border-line bg-bg">
@@ -47,13 +83,7 @@ export default function Navbar({ onRegisterClick, onLoginClick, onSettingsClick,
             <span className="logo-tag">Beta</span>
           </NavLink>
 
-          <div className="hidden items-center gap-1 lg:flex">
-            {links.map((link) => (
-              <NavLink key={link.to} to={link.to} end={link.end} className={linkClass}>
-                {link.label}
-              </NavLink>
-            ))}
-          </div>
+          <div className="hidden items-center gap-1 lg:flex">{links.map(renderLink)}</div>
         </div>
 
         <div className="nav-actions">
@@ -117,11 +147,7 @@ export default function Navbar({ onRegisterClick, onLoginClick, onSettingsClick,
 
       {menuOpen && (
         <div id="mobile-menu" className="flex flex-col gap-1 border-t border-line px-4 py-3 lg:hidden">
-          {links.map((link) => (
-            <NavLink key={link.to} to={link.to} end={link.end} className={linkClass}>
-              {link.label}
-            </NavLink>
-          ))}
+          {links.map(renderLink)}
         </div>
       )}
     </header>

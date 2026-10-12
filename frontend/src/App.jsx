@@ -11,6 +11,7 @@ import RequireRole from './components/RequireRole';
 import TradePage from './pages/TradePage';
 import LeaderboardPage from './pages/LeaderboardPage';
 import ProfilePage from './pages/ProfilePage';
+import FriendsPage from './pages/FriendsPage';
 import RewardsPage from './pages/RewardsPage';
 import DashboardPage from './pages/DashboardPage';
 import AdminPage from './pages/AdminPage';
@@ -67,6 +68,14 @@ export default function App() {
           <Route path="/" element={<TradePage onLoginRequest={openLogin} />} />
           <Route path="/leaderboard" element={<LeaderboardPage />} />
           <Route path="/players/:id" element={<ProfilePage />} />
+          <Route
+            path="/friends"
+            element={
+              <RequireRole onLoginRequest={openLogin}>
+                <FriendsPage />
+              </RequireRole>
+            }
+          />
           <Route
             path="/rewards"
             element={
