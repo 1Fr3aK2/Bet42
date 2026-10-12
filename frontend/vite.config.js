@@ -17,6 +17,7 @@ export default defineConfig({
         manualChunks: {
           react: ['react', 'react-dom', 'react-router-dom'],
           charts: ['recharts'],
+          candles: ['lightweight-charts'],
           realtime: ['socket.io-client'],
         },
       },

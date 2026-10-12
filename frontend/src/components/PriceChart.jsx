@@ -1,11 +1,14 @@
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 
 // Last 10 minutes of the live price. Dashed lines = entry prices of open bets.
-export default function PriceChart({ coin, data, bets = [] }) {
+// `embedded`: drawn inside MarketChart, which provides the card and the title.
+export default function PriceChart({ coin, data, bets = [], embedded = false }) {
   const title = `${coin}/EUR — Last 10 Minutes`;
 
   if (data.length < 2) {
-    return (
+    return embedded ? (
+      <div className="history-empty">Gathering price data…</div>
+    ) : (
       <div className="price-chart">
         <div className="side-panel-title">{title}</div>
         <div className="history-empty">Gathering price data…</div>
@@ -14,8 +17,8 @@ export default function PriceChart({ coin, data, bets = [] }) {
   }
 
   return (
-    <figure className="price-chart m-0" aria-label={`Price chart of ${coin} over the last 10 minutes`}>
-      <figcaption className="side-panel-title">{title}</figcaption>
+    <figure className={`m-0 ${embedded ? '' : 'price-chart'}`} aria-label={`Price chart of ${coin} over the last 10 minutes`}>
+      {!embedded && <figcaption className="side-panel-title">{title}</figcaption>}
       <ResponsiveContainer width="100%" height={240} initialDimension={{ width: 400, height: 240 }}>
         <LineChart data={data}>
           <XAxis

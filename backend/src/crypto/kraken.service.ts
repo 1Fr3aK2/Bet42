@@ -26,6 +26,16 @@ export interface PricePoint {
 	price: number;
 }
 
+// One-minute candle. `time` is the start of the minute, in Unix seconds.
+export interface Candle {
+	time: number;
+	open: number;
+	high: number;
+	low: number;
+	close: number;
+	volume: number;
+}
+
 // Pairs streamed from Kraken. The bets module only accepts coins listed here.
 export const KRAKEN_SYMBOLS = ['BTC/EUR', 'ETH/EUR'];
 
@@ -33,6 +43,11 @@ export const KRAKEN_SYMBOLS = ['BTC/EUR', 'ETH/EUR'];
 // gets the last 10 minutes of the chart immediately.
 const HISTORY_WINDOW_MS = 10 * 60 * 1000;
 const HISTORY_SAMPLE_MS = 1000;
+
+// Candles: the last 12 hours of 1-minute candles, loaded from Kraken's REST
+// API on start and kept up to date by the WebSocket "ohlc" channel.
+const CANDLE_LIMIT = 720;
+const REST_PAIRS: Record<string, string> = { 'BTC/EUR': 'XBTEUR', 'ETH/EUR': 'ETHEUR' };
 
 // Kraken sends a heartbeat every second; if nothing arrives for this long
 // the feed is considered down and prices must not be used to settle bets.
@@ -52,6 +67,7 @@ const FEED_STALE_MS = 15 * 1000;
 
 	private tickers = new Map<string, CryptoTicker>();
 	private history = new Map<string, PricePoint[]>();
+	private candles = new Map<string, Candle[]>();
 
 	onModuleInit() {
 	  this.connect();
@@ -69,6 +85,8 @@ const FEED_STALE_MS = 15 * 1000;
 		this.logger.log('Connected to Kraken');
 
 		this.subscribe();
+		// (Re)load the candle history: fills the gap after a disconnection.
+		this.loadCandleHistory();
 	  });
 
 	  this.ws.on('message', (message) => {
@@ -105,12 +123,96 @@ const FEED_STALE_MS = 15 * 1000;
 
 	  this.ws?.send(JSON.stringify(message));
 
-	  this.logger.log(`Subscribed to ${KRAKEN_SYMBOLS.join(', ')}`);
+	  this.ws?.send(
+		JSON.stringify({
+		  method: 'subscribe',
+		  params: { channel: 'ohlc', symbol: KRAKEN_SYMBOLS, interval: 1 },
+		}),
+	  );
+
+	  this.logger.log(`Subscribed to ${KRAKEN_SYMBOLS.join(', ')} (ticker + 1-minute candles)`);
+	}
+
+	private async loadCandleHistory() {
+	  for (const symbol of KRAKEN_SYMBOLS) {
+		try {
+		  const res = await fetch(
+			`https://api.kraken.com/0/public/OHLC?pair=${REST_PAIRS[symbol]}&interval=1`,
+		  );
+		  const body = await res.json();
+
+		  if (body.error?.length) {
+			throw new Error(body.error.join(', '));
+		  }
+
+		  // result = { XXBTZEUR: [[time, open, high, low, close, vwap, volume, count], ...], last }
+		  const rows = Object.entries(body.result).find(([key]) => key !== 'last')?.[1] as any[];
+		  const history: Candle[] = (rows ?? []).map((row) => ({
+			time: row[0],
+			open: Number(row[1]),
+			high: Number(row[2]),
+			low: Number(row[3]),
+			close: Number(row[4]),
+			volume: Number(row[6]),
+		  }));
+
+		  // Candles already received live are more recent: they win.
+		  const merged = new Map(history.map((c) => [c.time, c]));
+		  for (const candle of this.candles.get(symbol) ?? []) {
+			merged.set(candle.time, candle);
+		  }
+
+		  this.candles.set(
+			symbol,
+			[...merged.values()].sort((a, b) => a.time - b.time).slice(-CANDLE_LIMIT),
+		  );
+		} catch (error) {
+		  this.logger.warn(`Could not load candle history for ${symbol}: ${error.message}`);
+		}
+	  }
+	}
+
+	private upsertCandle(symbol: string, candle: Candle) {
+	  const list = this.candles.get(symbol) ?? [];
+	  const last = list[list.length - 1];
+
+	  if (!last || candle.time > last.time) {
+		list.push(candle);
+		if (list.length > CANDLE_LIMIT) list.shift();
+	  } else {
+		const index = list.findIndex((c) => c.time === candle.time);
+		if (index >= 0) list[index] = candle;
+	  }
+
+	  this.candles.set(symbol, list);
+	}
+
+	private handleCandles(items: any[]) {
+	  for (const item of items) {
+		const candle: Candle = {
+		  time: Math.floor(Date.parse(item.interval_begin) / 1000),
+		  open: item.open,
+		  high: item.high,
+		  low: item.low,
+		  close: item.close,
+		  volume: item.volume,
+		};
+
+		if (!Number.isFinite(candle.time)) continue;
+
+		this.upsertCandle(item.symbol, candle);
+		this.eventEmitter.emit('crypto.candle', { symbol: item.symbol, candle });
+	  }
 	}
 
 	private handleMessage(message: string) {
 	  try {
 		const data = JSON.parse(message);
+
+		if (data.channel === 'ohlc' && Array.isArray(data.data)) {
+		  this.handleCandles(data.data);
+		  return;
+		}
 
 		if (data.channel !== 'ticker') {
 		  return;
@@ -175,6 +277,10 @@ const FEED_STALE_MS = 15 * 1000;
 
 	getAllTickers(): CryptoTicker[] {
 	  return Array.from(this.tickers.values());
+	}
+
+	getCandles(symbol: string): Candle[] {
+	  return [...(this.candles.get(symbol) ?? [])];
 	}
 
 	getHistory(symbol: string): PricePoint[] {

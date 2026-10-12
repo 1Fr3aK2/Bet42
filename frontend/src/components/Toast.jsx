@@ -1,8 +1,8 @@
 import { useApp } from '../context/AppContext';
 
 const STYLES = {
-  win: 'border-up bg-[#1a3d24] text-up',
-  loss: 'border-down bg-[#3d1a1a] text-down',
+  win: 'border-up bg-[#1a3d24] text-[#5fd47a]', // text 6.4:1 on its background
+  loss: 'border-down bg-[#3d1a1a] text-[#ff8080]', // text 6.4:1 on its background
   achievement: 'border-accent bg-[#3a2c10] text-accent',
   info: 'border-line-strong bg-panel-2 text-text',
 };

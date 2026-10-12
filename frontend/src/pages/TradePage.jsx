@@ -4,7 +4,7 @@ import PriceDisplay from '../components/PriceDisplay';
 import BetSection from '../components/BetSection';
 import ActiveBets from '../components/ActiveBets';
 import HistoryList from '../components/HistoryList';
-import PriceChart from '../components/PriceChart';
+import MarketChart from '../components/MarketChart';
 import LiveFeed from '../components/LiveFeed';
 import { useApp, usePrices, useSocketEvent } from '../context/AppContext';
 import { getActiveBets, getBets, getFeed, placeBet } from '../api/bets';
@@ -169,7 +169,7 @@ export default function TradePage({ onLoginRequest }) {
 
           <div role="tabpanel">
             {sidePanelView === 'chart' && (
-              <PriceChart coin={selectedCoin} data={priceInfo?.history ?? []} bets={activeBets} />
+              <MarketChart coin={selectedCoin} history={priceInfo?.history ?? []} bets={activeBets} />
             )}
 
             {sidePanelView === 'bets' &&

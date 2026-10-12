@@ -14,6 +14,7 @@ import { FriendshipStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PresenceService } from './presence.service';
 import {
+  Candle,
   CryptoTicker,
   KRAKEN_SYMBOLS,
   KrakenService,
@@ -30,7 +31,8 @@ const LEADERBOARD_DEBOUNCE_MS = 2000;
 const userRoom = (userId: number) => `user:${userId}`;
 
 // Events sent to the browser:
-//   to everyone        crypto:snapshot (on connect), crypto:ticker, feed:bet,
+//   to everyone        crypto:snapshot (on connect), crypto:ticker,
+//                      crypto:candle, feed:bet,
 //                      feed:settled, presence:update, leaderboard:changed
 //   to one user's tabs bet:placed, bet:settled, wallet:update,
 //                      achievement:unlocked, level:up, session:refresh,
@@ -49,6 +51,8 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
 
   private readonly pendingTickers = new Map<string, CryptoTicker>();
   private tickerTimer: NodeJS.Timeout | null = null;
+  private readonly pendingCandles = new Map<string, Candle>();
+  private candleTimer: NodeJS.Timeout | null = null;
   private leaderboardTimer: NodeJS.Timeout | null = null;
 
   constructor(
@@ -154,6 +158,24 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
         this.server.emit('crypto:ticker', latest);
       }
       this.pendingTickers.clear();
+    }, TICKER_THROTTLE_MS);
+  }
+
+  // Latest state of the current 1-minute candle, same throttling as tickers.
+  @OnEvent('crypto.candle')
+  handleCandle({ symbol, candle }: { symbol: string; candle: Candle }) {
+    // Keyed by coin + minute: when a minute ends inside the window, the last
+    // state of the closing candle is still sent before the new one.
+    this.pendingCandles.set(`${symbol}|${candle.time}`, candle);
+
+    if (this.candleTimer) return;
+
+    this.candleTimer = setTimeout(() => {
+      this.candleTimer = null;
+      for (const [key, latest] of this.pendingCandles) {
+        this.server.emit('crypto:candle', { symbol: key.split('|')[0], candle: latest });
+      }
+      this.pendingCandles.clear();
     }, TICKER_THROTTLE_MS);
   }
 
