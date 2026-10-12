@@ -1,13 +1,21 @@
-FROM node:20-alpine
+# 1. Build the React app into static files (dist/)
+FROM node:20-alpine AS build
 
 WORKDIR /app
 
 COPY package*.json ./
 
-RUN npm install && chmod +x node_modules/.bin/*
+RUN npm ci
 
 COPY . .
 
-EXPOSE 3000
+RUN npm run build
 
-CMD ["npm", "run", "dev", "--", "--host"]
+# 2. Serve the static files. The main nginx (WAF + HTTPS) proxies to this
+#    container on port 5173.
+FROM nginx:alpine
+
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /app/dist /usr/share/nginx/html
+
+EXPOSE 5173
