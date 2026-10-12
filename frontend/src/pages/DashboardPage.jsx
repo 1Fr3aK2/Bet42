@@ -35,6 +35,14 @@ const PRESETS = [
 
 const isoDay = (date) => date.toISOString().slice(0, 10);
 
+// Axis labels for time series: hours for a short span, dates otherwise.
+function timeTickFormatter(points) {
+  const span = points.length ? points[points.length - 1].time - points[0].time : 0;
+  return span < 2 * DAY_MS
+    ? (t) => new Date(t).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+    : (t) => shortDate(new Date(t).toISOString().slice(0, 10));
+}
+
 // Filters -> API query, or an error message for an invalid custom range.
 function buildQuery(filters) {
   let from;
@@ -331,7 +339,7 @@ function MyAnalytics({ query, onExport, exporting }) {
             <ResponsiveContainer width="100%" height={240} initialDimension={{ width: 500, height: 240 }}>
               <LineChart data={data.balanceHistory} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
                 <CartesianGrid {...gridProps} />
-                <XAxis dataKey="time" type="number" scale="time" domain={['dataMin', 'dataMax']} tickFormatter={(t) => shortDate(new Date(t).toISOString().slice(0, 10))} minTickGap={32} {...axisProps} />
+                <XAxis dataKey="time" type="number" scale="time" domain={['dataMin', 'dataMax']} tickFormatter={timeTickFormatter(data.balanceHistory)} minTickGap={32} {...axisProps} />
                 <YAxis width={56} tickFormatter={compact} {...axisProps} />
                 <Tooltip
                   cursor={{ stroke: COLORS.axis }}
@@ -357,7 +365,7 @@ function MyAnalytics({ query, onExport, exporting }) {
             <ResponsiveContainer width="100%" height={240} initialDimension={{ width: 500, height: 240 }}>
               <LineChart data={data.cumulativeProfit} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
                 <CartesianGrid {...gridProps} />
-                <XAxis dataKey="time" type="number" scale="time" domain={['dataMin', 'dataMax']} tickFormatter={(t) => shortDate(new Date(t).toISOString().slice(0, 10))} minTickGap={32} {...axisProps} />
+                <XAxis dataKey="time" type="number" scale="time" domain={['dataMin', 'dataMax']} tickFormatter={timeTickFormatter(data.cumulativeProfit)} minTickGap={32} {...axisProps} />
                 <YAxis width={56} tickFormatter={compact} {...axisProps} />
                 <ReferenceLine y={0} stroke={COLORS.tick} strokeWidth={1} />
                 <Tooltip

@@ -42,6 +42,28 @@ const { avatar: _avatar, ...LIST_SELECT } = ACCOUNT_SELECT;
 
 const PALETTE = ['#e8a020', '#2ea84b', '#3b82f6', '#a855f7', '#e05252', '#14b8a6'];
 
+// The data URL must really contain an image of the declared type: check the
+// file signature ("magic bytes") at the start of the decoded data.
+function isRealImage(dataUrl: string): boolean {
+  const match = dataUrl.match(/^data:image\/(png|jpeg|webp|gif);base64,(.+)$/);
+  if (!match) return false;
+
+  const head = Buffer.from(match[2].slice(0, 24), 'base64');
+
+  switch (match[1]) {
+    case 'png':
+      return head.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+    case 'jpeg':
+      return head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff;
+    case 'gif':
+      return head.subarray(0, 4).toString('latin1') === 'GIF8';
+    case 'webp':
+      return head.subarray(0, 4).toString('latin1') === 'RIFF' && head.subarray(8, 12).toString('latin1') === 'WEBP';
+    default:
+      return false;
+  }
+}
+
 function escapeXml(text: string) {
   return text.replace(/[<>&"']/g, (c) => `&#${c.charCodeAt(0)};`);
 }
@@ -310,6 +332,10 @@ export class UsersService {
 
   async updateMe(userId: number, updateMeDto: UpdateMeDto) {
     await this.assertUsernameFree(updateMeDto.username, userId);
+
+    if (updateMeDto.avatar && !isRealImage(updateMeDto.avatar)) {
+      throw new BadRequestException('avatar is not a valid PNG, JPEG, WebP or GIF image');
+    }
 
     try {
       const user = await this.prisma.user.update({

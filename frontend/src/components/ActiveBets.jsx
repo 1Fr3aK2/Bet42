@@ -20,9 +20,12 @@ export default function ActiveBets({ bets, prices }) {
         const remaining = Math.max(0, Math.ceil((new Date(bet.expiresAt).getTime() - now) / 1000));
         const progress = 1 - remaining / bet.duration;
         const price = prices[bet.coin]?.price;
-        const winning = price !== undefined && price !== null
-          ? (bet.direction === 'UP' ? price > bet.entryPrice : price < bet.entryPrice)
-          : null;
+        // 'winning' / 'losing' / 'even' (same price = refund) compared with the entry price
+        let trend = null;
+        if (price !== undefined && price !== null) {
+          if (price === bet.entryPrice) trend = 'even';
+          else trend = (bet.direction === 'UP') === (price > bet.entryPrice) ? 'winning' : 'losing';
+        }
 
         return (
           <div className="active-bet-card" key={bet.id}>
@@ -46,8 +49,8 @@ export default function ActiveBets({ bets, prices }) {
             </div>
             <div className="active-bet-row">
               <span className="active-bet-label">Now</span>
-              <span className={`active-bet-value ${winning === null ? '' : winning ? 'up' : 'down'}`}>
-                {fmt(price)} {winning === null ? '' : winning ? '· winning' : '· losing'}
+              <span className={`active-bet-value ${trend === 'winning' ? 'up' : trend === 'losing' ? 'down' : ''}`}>
+                {fmt(price)} {trend ? `· ${trend}` : ''}
               </span>
             </div>
             <div className="active-bet-row">
