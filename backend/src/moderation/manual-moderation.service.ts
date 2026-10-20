@@ -22,7 +22,7 @@ export class ManualModerationService {
   }
 
   async findPendingContent() {
-	
+
 	// Promise.all() runs both independent queries concurrently and waits for both to resolve
 	const [posts, comments] = await Promise.all([   // Array destructuring: creates two variables from the two results
 	  this.prisma.post.findMany({
