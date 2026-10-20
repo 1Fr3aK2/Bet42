@@ -9,11 +9,6 @@ import { MetricsModule } from './metrics/metrics.module';
 import { CryptoModule } from './crypto/crypto.module';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { PublicApiModule } from './public-api/public-api.module';
-import { BetsModule } from './bets/bets.module';
-import { GamificationModule } from './gamification/gamification.module';
-import { AnalyticsModule } from './analytics/analytics.module';
-import { RealtimeModule } from './realtime/realtime.module';
-import { FriendsModule } from './friends/friends.module';
 
 @Module({
   imports: [
@@ -27,11 +22,6 @@ import { FriendsModule } from './friends/friends.module';
 	CryptoModule,
 	EventEmitterModule.forRoot(),
     PublicApiModule,
-    BetsModule,
-    GamificationModule,
-    AnalyticsModule,
-    RealtimeModule,
-    FriendsModule,
   ],
   controllers: [],
   providers: [],

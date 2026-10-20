@@ -1,87 +1,66 @@
+NODE_BIN = ./backend/node_modules/.bin
+
 NPM = npm --prefix backend
 
-SCRIPT_ENV = ./scripts/setup-env.sh
+DOCKER_COMPOSE = docker compose
+
 SCRIPT_CERTS = ./scripts/setup-certs.sh
 COMPOSE = docker compose -f ./docker-compose.yml
 
-# Rootless Docker cannot publish ports below 1024, so use 8443/8080 there.
-# HTTPS_PORT / HTTP_PORT can also be set in .env or on the command line.
-ROOTLESS := $(shell docker info --format '{{join .SecurityOptions " "}}' 2>/dev/null | grep -q rootless && echo yes)
-ENV_HTTPS_PORT := $(shell grep -s '^HTTPS_PORT=' .env | cut -d= -f2)
-ifeq ($(ROOTLESS)$(ENV_HTTPS_PORT),yes)
-HTTPS_PORT ?= 8443
-HTTP_PORT ?= 8080
-export HTTPS_PORT HTTP_PORT
-endif
-PUBLIC_PORT := $(or $(HTTPS_PORT),$(ENV_HTTPS_PORT),443)
-URL := https://localhost$(if $(filter 443,$(PUBLIC_PORT)),,:$(PUBLIC_PORT))
+SERVICES = nginx nginx_exporter vault grafana prometheus redis redis_exporter postgres postgres_exporter
 
-all: setup build up wait
-	@echo ""
-	@echo "Transcendence is running at $(URL)"
-	@echo "Admin login: $$(grep -s '^ADMIN_EMAIL=' .env | cut -d= -f2) / $$(grep -s '^ADMIN_PASSWORD=' .env | cut -d= -f2)"
+all: deps build up
+	@echo "Transcendence started!"
 
-# Creates .env (random secrets) and the TLS certificates if they are missing.
-setup:
-	@$(SCRIPT_ENV)
-	@$(SCRIPT_CERTS)
-
-build: setup
-	@echo "Building images..."
-	$(COMPOSE) build
-
-up: setup
-	@echo "Upping all the containers..."
-	$(COMPOSE) up -d
-
-# Waits (max 5 min) until nginx reports healthy, i.e. the whole chain is up.
-wait:
-	@echo "Waiting for the services to be ready..."
-	@for i in $$(seq 1 150); do \
-		if [ "$$(docker inspect -f '{{.State.Health.Status}}' nginx 2>/dev/null)" = "healthy" ]; then exit 0; fi; \
-		sleep 2; \
-	done; \
-	echo "Services are still starting, check them with 'make ps'"
-
-down:
-	@echo "Stopping and removing containers..."
-	$(COMPOSE) down
-
-ps:
-	$(COMPOSE) ps
-
-# Local development without Docker for the backend (needs Node.js).
 deps:
 	@echo "Installing backend dependencies..."
 	cd backend && npm install
 	cd backend && npx prisma generate
 
+build:
+	@echo "Building images..."
+	$(SCRIPT_CERTS)
+	$(COMPOSE) build
+
+up:
+	@echo "Upping all the containers..."
+	$(COMPOSE) up -d
+
+down:
+	@echo "Stopping and removing containers..."
+	$(COMPOSE) down
+
 dev:
 	@echo "Iniciando localmente em modo de desenvolvimento..."
 	$(NPM) run start:dev
 
-# Only touches this project's containers, images and volumes.
 clean:
 	@echo "Cleaning Docker..."
-	@rm -rf backend/dist frontend/dist
-	$(COMPOSE) down --remove-orphans
+	@echo "Limpando a pasta dist..."
+	@if [ -d "backend/dist" ]; then \
+		rm -rf backend/dist 2>/dev/null || sudo rm -rf backend/dist; \
+	fi
+	$(COMPOSE) down
+	docker system prune -f
 
-fclean:
-	@echo "Full cleaning (containers, images, volumes, certificates)..."
-	$(COMPOSE) down -v --rmi local --remove-orphans
-	@rm -rf backend/dist frontend/dist
-	@# Files written by containers may belong to root: remove them from a container.
-	@rm -rf nginx/certs vault/certs 2>/dev/null || \
-		docker run --rm -v "$(CURDIR):/project" alpine rm -rf /project/nginx/certs /project/vault/certs
+fclean: clean
+	@echo "Full cleaning Docker..."
+	-docker stop $$(docker ps -qa)
+	-docker rm $$(docker ps -qa)
+	-docker rmi -f $$(docker images -qa)
+	-docker volume rm $$(docker volume ls -q)
+	-docker network rm $$(docker network ls -q) 2>/dev/null
+	sudo rm -rf nginx/certs/
+	sudo rm -rf vault/certs/
+	$(COMPOSE) down -v
 
 logs:
 	@echo "Check specific service logs (ex: make logs SERVICE=backend)"
 	$(COMPOSE) logs -f $(SERVICE)
 
-update:
+update: deps
 	@echo "Updating everything and bringing all containers up to date..."
-	@$(SCRIPT_ENV)
-	@$(SCRIPT_CERTS)
+	$(SCRIPT_CERTS)
 	$(COMPOSE) build
 	$(COMPOSE) up -d --remove-orphans
 	@echo "Transcendence updated and running!"
@@ -90,7 +69,7 @@ exec:
 	@echo "Entering on the container (ex: make exec SERVICE=backend)"
 	$(COMPOSE) exec $(SERVICE) sh
 
-re: fclean all
+re: fclean deps build up
 	@echo "Restarting all the containers..."
 
-.PHONY: all setup build up wait down ps deps dev clean fclean logs update exec re
+.PHONY: all build deps up down dev clean update fclean logs exec re

@@ -14,23 +14,21 @@ export class AuthService {
   ) {}
 
   async login(dto: LoginDto) {
-    const email = dto.email?.trim().toLowerCase();
-    const identifier = email ?? dto.username;
 
-    const key = `login_attempts:${identifier}`;
+    const key = `login_attempts:${dto.username}`;
     const allowed = await this.rateLimiter.checkLimit(key, 5, 1800);
     if (!allowed) {
-      throw new UnauthorizedException(
-        'Too many failed attempts. Try again in 30 minutes.',
-      );
+      throw new UnauthorizedException('Email ou password inválidos');
     }
 
     const user = await this.prisma.user.findUnique({
-      where: email ? { email } : { username: dto.username },
+      where: {
+        username: dto.username,
+      },
     });
 
     if (!user) {
-      throw new UnauthorizedException('Invalid email or password');
+      throw new UnauthorizedException('Email ou password inválidos');
     }
 
     const valid = await bcrypt.compare(
@@ -39,7 +37,7 @@ export class AuthService {
     );
 
     if (!valid) {
-      throw new UnauthorizedException('Invalid email or password');
+      throw new UnauthorizedException('Email ou password inválidos');
     }
 
     await this.rateLimiter.resetLimit(key);

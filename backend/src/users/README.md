@@ -2,86 +2,218 @@
 
 ## What it does
 
-Manages user accounts: registration, profile, avatar, password, account
-deletion, public profiles and, for administrators, user management (view,
-edit, delete, change role). Users can only modify their own account; every
-operation on another account requires the `ADMIN` role.
-
-Validation rules shared by the DTOs live in `user-validation.ts` (the frontend
-applies the same rules in `frontend/src/utils/validation.js`).
-
-| Field | Rule |
-|-------|------|
-| `username` | 3-20 characters, letters, numbers and `_`; unique ignoring case |
-| `email` | valid email, max 254, stored lowercase, unique |
-| `password` | 8-72 characters with at least one letter and one number; stored as a bcrypt hash (10 rounds, salted) |
-| `avatar` | PNG/JPEG/WebP/GIF data URL, max 200,000 characters (the browser resizes images to 256×256 first) |
+Manages user accounts: creation, listing, profile updates, password changes,
+and role assignment. All write operations that affect other users are
+restricted to admins; users can only modify their own profile and password.
 
 ## Endpoints
 
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| `POST` | `/users` | public | Register. Body `{ username, email, password }`. The server sets the starting balance (1,000 T$) and writes a `SIGNUP_BONUS` ledger entry. Sending `wallet` or any unknown field returns `400`. |
-| `GET` | `/users/availability?username=&email=` | public | `{ username: bool, email: bool }` — `true` when still free (used by the registration form). |
-| `GET` | `/users/me` | JWT | Own account (wallet, xp, level, role, avatar, avatarUrl...). |
-| `PATCH` | `/users/me` | JWT | Update `username` and/or `avatar` (`null` removes the avatar). |
-| `DELETE` | `/users/me` | JWT | Delete own account; body `{ password }`. Not allowed for `ADMIN`. |
-| `PATCH` | `/users/password` | JWT | Body `{ currentPassword, newPassword }`. |
-| `GET` | `/users/:id/avatar` | public | Uploaded avatar, or a generated SVG default avatar. Cached 1 day (`?v=` busts it). |
-| `GET` | `/users/:id/profile` | public | Public profile: level, stats, win rate, achievements, last settled bets. No email. |
-| `GET` | `/users?search=&role=` | ADMIN | List accounts (search in username/email, filter by role). |
-| `GET` | `/users/:id` | ADMIN | Account details with counts (bets, posts, comments, achievements) and latest bets. |
-| `PATCH` | `/users/:id` | ADMIN | Edit `username`, `email`, `wallet`. A balance change is recorded as `ADMIN_ADJUSTMENT` in the wallet ledger. Other admins cannot be edited. |
-| `DELETE` | `/users/:id` | ADMIN | Delete an account. Admins cannot be deleted, nor can the caller delete themselves here. |
-| `PATCH` | `/users/:id/role` | ADMIN | Body `{ role: "USER" \| "MODERATOR" }`. The `ADMIN` role cannot be given or removed. |
+### `POST /users` — Create a user
 
-Errors follow the NestJS format, for example:
+**Auth**: none (public — used during registration).
+
+#### Request body
 
 ```json
-{ "statusCode": 409, "message": "This username is already taken", "error": "Conflict" }
+{
+  "username": "pedro",
+  "email": "pedro@test.com",
+  "password": "12345678",
+  "wallet": 0,
+  "avatar": "https://…"
+}
 ```
 
-Validation errors return `400` with `message` as an array of messages.
+`CreateUserDto` validation:
 
-## Account deletion
+| Field      | Type   | Constraints                   |
+|------------|--------|-------------------------------|
+| `username` | string | required                      |
+| `email`    | string | required, valid email format  |
+| `password` | string | required, ≥ 8 characters      |
+| `wallet`   | number | required                      |
+| `avatar`   | string | optional                      |
 
-Deleting an account (by the user or by an admin) removes, through the
-`ON DELETE CASCADE` foreign keys, the user's bets, wallet ledger, achievements,
-friendships, posts, comments and reports. Reports that target the user's posts
-or comments are deleted in the same transaction. Moderation log entries are
-kept with `moderatorId = null`. The user's open browser tabs receive
-`session:revoked` and are logged out; their token is rejected afterwards
-because `JwtStrategy` checks that the account still exists.
+Password is hashed with **bcrypt** (10 rounds) before storage.
 
-## Real-time notifications
+#### Response `201`
 
-`user.updated` (role or profile changed by an admin) and `user.deleted` events
-are pushed to the user's sockets by `RealtimeGateway` (`session:refresh` /
-`session:revoked`), so menus and permissions change without reloading.
+```json
+{
+  "id": 1,
+  "username": "pedro",
+  "email": "pedro@test.com",
+  "role": "USER",
+  "avatar": null,
+  "wallet": 0,
+  "wins": 0,
+  "losses": 0,
+  "createdAt": "2026-01-01T00:00:00.000Z",
+  "updatedAt": "2026-01-01T00:00:00.000Z"
+}
+```
+
+#### Error `409 Conflict`
+
+Returned when `username` or `email` already exists.
+
+```json
+{ "message": "Username or email already exists", "statusCode": 409 }
+```
+
+---
+
+### `GET /users` — List all users
+
+**Auth**: `JwtAuthGuard` + `RolesGuard` — requires role `ADMIN`.
+
+Returns all users with full public fields (no passwords).
+
+```json
+[
+  {
+    "id": 1,
+    "username": "pedro",
+    "email": "pedro@test.com",
+    "role": "USER",
+    "avatar": null,
+    "wallet": 0,
+    "wins": 0,
+    "losses": 0,
+    "createdAt": "…",
+    "updatedAt": "…"
+  }
+]
+```
+
+---
+
+### `PATCH /users/:id/role` — Change a user's role
+
+**Auth**: `JwtAuthGuard` + `RolesGuard` — requires role `ADMIN`.
+
+#### Request body
+
+```json
+{ "role": "MODERATOR" }
+```
+
+`UpdateUserRoleDto` validation:
+
+| Field  | Type   | Constraints                       |
+|--------|--------|-----------------------------------|
+| `role` | string | required, one of `USER`, `MODERATOR` |
+
+**Rules enforced by the service:**
+- Target user must exist — `404` otherwise.
+- An `ADMIN`'s role cannot be changed through this endpoint — `400` if
+  the target is already an admin.
+- `role` must be `USER` or `MODERATOR` (admins cannot be created this way).
+
+#### Response `200`
+
+```json
+{ "id": 2, "username": "joao", "email": "joao@test.com", "role": "MODERATOR" }
+```
+
+---
+
+### `PATCH /users/me` — Update own profile
+
+**Auth**: `JwtAuthGuard` — any authenticated user.
+
+Allows a user to change their own `username` and/or `avatar`.
+
+#### Request body
+
+```json
+{
+  "username": "new_name",
+  "avatar": "https://…"
+}
+```
+
+`UpdateMeDto` validation:
+
+| Field      | Type   | Constraints                |
+|------------|--------|----------------------------|
+| `username` | string | optional, ≥ 3 characters   |
+| `avatar`   | string | optional                   |
+
+#### Response `200`
+
+Full user object (same shape as `POST /users` response).
+
+#### Error `409 Conflict`
+
+Returned when the new `username` is already taken.
+
+---
+
+### `PATCH /users/password` — Change own password
+
+**Auth**: `JwtAuthGuard` — any authenticated user.
+
+#### Request body
+
+```json
+{
+  "currentPassword": "oldpassword",
+  "newPassword": "newpassword123"
+}
+```
+
+`UpdatePasswordDto` validation:
+
+| Field             | Type   | Constraints          |
+|-------------------|--------|----------------------|
+| `currentPassword` | string | required             |
+| `newPassword`     | string | required, ≥ 8 chars  |
+
+**Rules enforced by the service:**
+- User must exist — `404` otherwise.
+- `currentPassword` must match the stored bcrypt hash — `400` if incorrect.
+- `newPassword` is hashed with bcrypt (10 rounds) before storage.
+
+#### Response `200`
+
+```json
+{ "message": "Password updated successfully" }
+```
+
+---
 
 ## Available roles
 
-| Role | Can |
-|------|-----|
-| guest (not logged in) | watch prices, the live feed, the leaderboard, public profiles, legal pages |
-| `USER` | bet, claim rewards, dashboard, friends, forum, settings |
-| `MODERATOR` | everything a user can + moderation queue, reports, moderation log |
-| `ADMIN` | everything + user management, platform analytics, Public Admin API key |
+| Role        | Description                                    |
+|-------------|------------------------------------------------|
+| `USER`      | Default role — regular player                  |
+| `MODERATOR` | Can access content moderation endpoints        |
+| `ADMIN`     | Full access, including user listing and role management |
+
+---
+
+## Error reference
+
+| Status | Meaning                                              |
+|--------|------------------------------------------------------|
+| 400    | Validation error or business rule violation          |
+| 401    | Missing or invalid JWT                               |
+| 403    | Authenticated but insufficient role                  |
+| 404    | User not found                                       |
+| 409    | Username or email conflict                           |
+
+---
 
 ## Module structure
 
 ```
 users/
-├── users.controller.ts      # routes (static routes before ":id")
-├── users.service.ts         # business logic, ledger, deletion, avatars
-├── users.module.ts
-├── user-validation.ts       # shared patterns and messages
-├── create-user.dto.ts
-├── update-me.dto.ts
-├── update-password.dto.ts
-├── update-user-role.dto.ts
-├── admin-update-user.dto.ts
-├── delete-account.dto.ts
-├── list-users.dto.ts
-└── availability.dto.ts
+├── users.module.ts           # NestJS module declaration
+├── users.controller.ts       # Route handlers
+├── users.service.ts          # Business logic + Prisma calls
+├── create-user.dto.ts        # DTO for POST /users
+├── update-me.dto.ts          # DTO for PATCH /users/me
+├── update-password.dto.ts    # DTO for PATCH /users/password
+└── update-user-role.dto.ts   # DTO for PATCH /users/:id/role
 ```

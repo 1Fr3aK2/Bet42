@@ -1,10 +1,16 @@
-import { apiFetch } from './client';
+const API_URL = '';
 
-// Email + password login. Returns { access_token }.
-export function loginUser({ email, password }) {
-  return apiFetch('/auth/login', {
+export async function loginUser({ username, password }) {
+  const response = await fetch(`${API_URL}/auth/login`, {
     method: 'POST',
-    body: { email: email.trim().toLowerCase(), password },
-    token: '',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
   });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.message || 'Login failed');
+  }
+
+  return response.json(); // { access_token: "..." }
 }
