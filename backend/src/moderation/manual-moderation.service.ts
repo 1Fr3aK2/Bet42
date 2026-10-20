@@ -45,7 +45,7 @@ export class ManualModerationService {
 	]);
 
 	return {      // Returns both arrays grouped in a JavaScript object
-	  posts,
+	  posts,      // property shorthand
 	  comments,
 	};
   }
