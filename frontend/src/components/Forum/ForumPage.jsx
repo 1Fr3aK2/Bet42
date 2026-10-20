@@ -79,6 +79,7 @@ export default function ForumPage({ token, currentUser, onClose }) {
         </div>
 
         <input
+          aria-label="Search posts"
           className="forum-search"
           type="text"
           placeholder="Search posts..."
@@ -88,6 +89,7 @@ export default function ForumPage({ token, currentUser, onClose }) {
 
         <div className="forum-filters">
           <select
+            aria-label="Sort posts"
             className="forum-select"
             value={sort}
             onChange={(e) => { setPage(1); setSort(e.target.value); }}

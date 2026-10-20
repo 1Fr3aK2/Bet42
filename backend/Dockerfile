@@ -1,6 +1,9 @@
 # 1. Imagem base estável e leve do Node.js
 FROM node:20-alpine
 
+# More retries and longer timeouts for npm, so a slow network does not stop the build.
+ENV npm_config_fetch_retries=5 npm_config_fetch_retry_mintimeout=20000 npm_config_fetch_retry_maxtimeout=120000 npm_config_fetch_timeout=600000
+
 # 2. Instalar o Nest CLI globalmente dentro do contentor
 RUN npm install -g @nestjs/cli
 

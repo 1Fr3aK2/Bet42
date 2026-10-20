@@ -112,7 +112,7 @@ body {
   font-size: 9px;
   letter-spacing: 0.15em;
   text-transform: uppercase;
-  color: #4a5268;
+  color: #8a93aa;
 }
 
 .nav-balance-value {
@@ -272,7 +272,7 @@ body {
   font-size: 9px;
   letter-spacing: 0.15em;
   text-transform: uppercase;
-  color: #4a5268;
+  color: #8a93aa;
 }
 
 .stat-value {
@@ -418,7 +418,7 @@ body {
 .payout-info {
   font-size: 11px;
   letter-spacing: 0.08em;
-  color: #4a5268;
+  color: #8a93aa;
   text-transform: uppercase;
 }
 
@@ -451,9 +451,9 @@ body {
 .bet-btn:hover:not(:disabled) { opacity: 0.85; transform: translateY(-1px); }
 .bet-btn:disabled { opacity: 0.3; cursor: not-allowed; transform: none; }
 /* Green UP button */
-.bet-up { background: #2ea84b; color: #fff; }
+.bet-up { background: #2ea84b; color: #0d0f14; }
 /* Red DOWN button */
-.bet-down { background: #e05252; color: #fff; }
+.bet-down { background: #e05252; color: #0d0f14; }
 
 /* Status line below buttons: e.g. "Active: UP on BTC" or "Insufficient balance" */
 .bet-status {
@@ -487,7 +487,7 @@ body {
   font-size: 10px;
   letter-spacing: 0.2em;
   text-transform: uppercase;
-  color: #4a5268;
+  color: #8a93aa;
   margin-bottom: 14px;
 }
 
@@ -515,7 +515,7 @@ body {
   font-size: 10px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #4a5268;
+  color: #8a93aa;
 }
 
 .active-bet-value {
@@ -548,7 +548,7 @@ body {
   font-size: 11px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: #2e3347;
+  color: #8a93aa;
   text-align: center;
   padding: 20px 0;
 }
@@ -592,7 +592,7 @@ body {
 /* Price movement percentage (e.g. "+0.043%") */
 .history-move {
   font-size: 10px;
-  color: #4a5268;
+  color: #8a93aa;
   letter-spacing: 0.06em;
 }
 
@@ -820,7 +820,7 @@ body {
 .settings-sidebar-header {
   padding: 0 24px 16px;
   font-size: 13px;
-  color: #5c6478;
+  color: #8a93aa;
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -872,6 +872,7 @@ body {
 .settings-avatar-preview {
   width: 64px;
   height: 64px;
+  flex-shrink: 0;
   border-radius: 50%;
   background: #f7a825;
   color: #0b0f17;
@@ -967,7 +968,7 @@ body {
 
 .forum-empty {
   text-align: center;
-  color: #5c6478;
+  color: #8a93aa;
   padding: 48px 0;
 }
 
@@ -1006,7 +1007,7 @@ body {
 
 .post-card-meta {
   font-size: 12px;
-  color: #5c6478;
+  color: #8a93aa;
 }
 
 .forum-pagination {
@@ -1154,3 +1155,58 @@ body {
 .settings-save-btn:disabled { opacity: 0.6; cursor: default; }
 
 .settings-success { color: #4caf50; font-size: 14px; }
+
+
+/* ════════════════════════════════════════════
+   ADDITIONS — selected states, links, responsive
+   ════════════════════════════════════════════ */
+
+/* Selected expiry (1 min / 5 min) */
+.quick-btn--active { border-color: #e8a020; background: #e8a020; color: #0d0f14; }
+.quick-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.navbar a { text-decoration: none; }
+
+/* Tablets: betting panel above the chart */
+@media (max-width: 960px) {
+  .trading-layout { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Phones */
+@media (max-width: 640px) {
+  .navbar {
+    height: auto;
+    min-height: 64px;
+    padding: 8px 1rem;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .logo-text { font-size: 16px; }
+  .nav-actions { gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .nav-divider { display: none; }
+  .nav-btn { padding: 8px 12px; }
+
+  .page-content { padding: 16px 1rem; }
+  .trading-panel { padding: 18px; gap: 18px; }
+  .price-display { flex-wrap: wrap; row-gap: 4px; }
+  .price-value { font-size: 24px; }
+  .coin-stats { flex-direction: column; }
+  .stat { border-right: none; border-bottom: 1px solid #1e2330; }
+  .stat:last-child { border-bottom: none; }
+  .bet-btn { padding: 14px 8px; }
+
+  .settings-page { flex-direction: column; overflow-y: auto; }
+  .settings-sidebar {
+    width: 100%;
+    flex-direction: row;
+    padding: 12px 56px 12px 12px;
+    border-right: none;
+    border-bottom: 1px solid #1c2330;
+  }
+  .settings-sidebar-header { display: none; }
+  .settings-tab { padding: 8px 14px; }
+  .settings-content { padding: 32px 16px; }
+
+  .forum-page .forum-container { padding: 64px 16px 24px; }
+  .modal { width: min(92vw, 360px); }
+}

@@ -149,6 +149,80 @@
       "fieldConfig": {
         "defaults": { "unit": "s" }
       }
+    },
+    {
+      "id": 13,
+      "title": "Trading activity (business metrics from the backend)",
+      "type": "row",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 36 },
+      "panels": []
+    },
+    {
+      "id": 14,
+      "title": "Open WebSocket connections",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 37 },
+      "targets": [
+        { "expr": "ws_connected_clients", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": { "decimals": 0 }
+      }
+    },
+    {
+      "id": 15,
+      "title": "Bets placed (last hour)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 37 },
+      "targets": [
+        { "expr": "sum(increase(bets_placed_total[1h]))", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": { "decimals": 0 }
+      }
+    },
+    {
+      "id": 16,
+      "title": "T$ wagered (last hour)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 37 },
+      "targets": [
+        { "expr": "sum(increase(bets_wagered_tdollars_total[1h]))", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": { "decimals": 0 }
+      }
+    },
+    {
+      "id": 17,
+      "title": "Player win rate (last hour)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 37 },
+      "targets": [
+        { "expr": "(sum(increase(bets_settled_total{status=\"WON\"}[1h])) or vector(0)) / clamp_min(sum(increase(bets_settled_total{status=~\"WON|LOST\"}[1h])) or vector(0), 1)", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "percentunit", "decimals": 1 }
+      }
+    },
+    {
+      "id": 18,
+      "title": "Bets placed per minute by coin",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 41 },
+      "targets": [
+        { "expr": "sum by (coin) (rate(bets_placed_total[5m])) * 60", "refId": "A", "legendFormat": "{{coin}}" }
+      ]
+    },
+    {
+      "id": 19,
+      "title": "Bets settled per minute by result",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 41 },
+      "targets": [
+        { "expr": "sum by (status) (rate(bets_settled_total[5m])) * 60", "refId": "A", "legendFormat": "{{status}}" }
+      ]
     }
   ]
 }

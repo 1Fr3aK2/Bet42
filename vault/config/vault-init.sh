@@ -34,22 +34,19 @@ else
   echo "[*] Vault já estava destrancado"
 fi
 
-# 2.5 Bootstrap already done? If the root token has been revoked and the
-#     AppRole credentials exist, there is nothing left to provision.
-#     Vault was already unsealed above.
-if ! vault token lookup >/dev/null 2>&1; then
-  if [ -s "$APPROLE_DIR/role_id" ] && [ -s "$APPROLE_DIR/secret_id" ]; then
-    echo "[*] Bootstrap já concluído (root token revogado, AppRole presente) — nada a fazer"
-    exit 0
-  fi
-  echo "[!] Root token inválido e AppRole em falta — estado inconsistente."
-  echo "[!] Apaga os volumes (docker compose down -v) e recomeça."
-  exit 1
+# 2b. Já configurado num arranque anterior: no fim desse arranque o root token
+#     foi revogado (passo 10), por isso já não pode escrever secrets. Secrets,
+#     policy e AppRole estão no storage persistente do Vault e o role_id /
+#     secret_id do backend continuam no volume partilhado: basta destrancar
+#     (passo 2) e terminar com sucesso. Sem isto, um segundo `make` / `up`
+#     falhava aqui em loop e o backend nunca arrancava.
+if [ -s "$APPROLE_DIR/role_id" ] && [ -s "$APPROLE_DIR/secret_id" ] && ! vault token lookup >/dev/null 2>&1; then
+  echo "[*] Vault já configurado num arranque anterior (root token revogado) — nada mais a fazer"
+  exit 0
 fi
 
-# 3. Enable the KV v2 secrets engine at "secret/" — automatic in dev mode,
-#    but outside dev mode it must be done explicitly
-#    (idempotent: the error is ignored if it already exists)
+# 3. Ativar o motor de secrets KV v2 em "secret/" — em dev-mode isto é automático,
+#    fora de dev-mode tem de ser feito explicitamente (idempotente: ignora erro se já existir)
 vault secrets enable -path=secret -version=2 kv 2>/dev/null || true
 
 # 4. Store secrets (idempotent — vault kv put overwrites without failing)

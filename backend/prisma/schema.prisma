@@ -13,12 +13,33 @@ enum Role {
   ADMIN
 }
 
+enum BetDirection {
+  UP
+  DOWN
+}
+
+enum BetStatus {
+  PENDING
+  WON
+  LOST
+  REFUNDED
+}
+
+enum TransactionType {
+  SIGNUP_BONUS
+  BET_STAKE
+  BET_PAYOUT
+  BET_REFUND
+  DAILY_BONUS
+  ADMIN_ADJUSTMENT
+}
+
 model User {
   id        Int      @id @default(autoincrement())
   username  String   @unique
   email     String   @unique
   password  String
-  wallet    Int      @default(0)
+  wallet    Int      @default(1000)
   avatar    String?
   wins      Int      @default(0)
   losses    Int      @default(0)
@@ -26,6 +47,12 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Gamification
+  xp               Int       @default(0)
+  currentStreak    Int       @default(0)
+  bestStreak       Int       @default(0)
+  dailyStreak      Int       @default(0)
+  lastDailyClaimAt DateTime?
 
   posts    Post[]
   comments Comment[]
@@ -34,6 +61,100 @@ model User {
   reportsModerated Report[] @relation("ReportsModerated")
 
   moderationLogs ModerationLog[]
+
+  bets         Bet[]
+  transactions WalletTransaction[]
+  achievements UserAchievement[]
+
+  friendshipsSent     Friendship[] @relation("FriendshipSender")
+  friendshipsReceived Friendship[] @relation("FriendshipReceiver")
+}
+
+enum FriendshipStatus {
+  PENDING
+  ACCEPTED
+}
+
+// Friend request from sender to receiver. ACCEPTED = they are friends.
+// Declining or removing a friend deletes the row.
+model Friendship {
+  id         Int              @id @default(autoincrement())
+  senderId   Int
+  receiverId Int
+  status     FriendshipStatus @default(PENDING)
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  sender   User @relation("FriendshipSender", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver User @relation("FriendshipReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@unique([senderId, receiverId])
+  @@index([receiverId, status])
+}
+
+// One prediction: "the price of <coin> will be UP/DOWN in <duration> seconds".
+// The stake is taken from the wallet when the bet is placed and the server
+// settles it at expiresAt using the live Kraken price.
+model Bet {
+  id         Int          @id @default(autoincrement())
+  userId     Int
+  coin       String
+  direction  BetDirection
+  amount     Int
+  duration   Int
+  entryPrice Float
+  exitPrice  Float?
+  payout     Int          @default(0)
+  status     BetStatus    @default(PENDING)
+  createdAt  DateTime     @default(now())
+  expiresAt  DateTime
+  resolvedAt DateTime?
+
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions WalletTransaction[]
+
+  @@index([userId, createdAt])
+  @@index([status, expiresAt])
+}
+
+// Ledger of every wallet movement. The sum of `amount` for a user equals
+// their wallet, and `balanceAfter` gives the balance history for analytics.
+model WalletTransaction {
+  id           Int             @id @default(autoincrement())
+  userId       Int
+  type         TransactionType
+  amount       Int
+  balanceAfter Int
+  betId        Int?
+  createdAt    DateTime        @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bet  Bet? @relation(fields: [betId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+}
+
+// Catalog of achievements. Kept in sync with gamification.constants.ts
+// by GamificationService on startup.
+model Achievement {
+  code        String @id
+  name        String
+  description String
+  icon        String
+  xpReward    Int    @default(0)
+
+  unlockedBy UserAchievement[]
+}
+
+model UserAchievement {
+  userId          Int
+  achievementCode String
+  unlockedAt      DateTime @default(now())
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievement Achievement @relation(fields: [achievementCode], references: [code], onDelete: Cascade)
+
+  @@id([userId, achievementCode])
 }
 
 model Post {
@@ -48,7 +169,7 @@ model Post {
   updatedAt          DateTime @updatedAt
 
   authorId Int
-  author   User @relation(fields: [authorId], references: [id])
+  author   User @relation(fields: [authorId], references: [id], onDelete: Cascade)
 
   comments Comment[]
 }
@@ -67,7 +188,7 @@ model Comment {
   post   Post @relation(fields: [postId], references: [id], onDelete: Cascade)
 
   authorId Int
-  author   User @relation(fields: [authorId], references: [id])
+  author   User @relation(fields: [authorId], references: [id], onDelete: Cascade)
 }
 
 model Report {
@@ -84,8 +205,8 @@ model Report {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  reporter  User  @relation("ReportsCreated", fields: [reporterId], references: [id])
-  moderator User? @relation("ReportsModerated", fields: [moderatorId], references: [id])
+  reporter  User  @relation("ReportsCreated", fields: [reporterId], references: [id], onDelete: Cascade)
+  moderator User? @relation("ReportsModerated", fields: [moderatorId], references: [id], onDelete: SetNull)
 }
 
 model ModerationLog {
@@ -95,9 +216,9 @@ model ModerationLog {
   targetId    Int
   action      String
   reason      String?
-  moderatorId Int
+  moderatorId Int?
   createdAt   DateTime @default(now())
 
-
-  moderator User @relation(fields: [moderatorId], references: [id])
+  // Kept when the moderator's account is deleted (audit trail).
+  moderator User? @relation(fields: [moderatorId], references: [id], onDelete: SetNull)
 }
