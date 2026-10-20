@@ -1,25 +1,20 @@
-import { Transform } from 'class-transformer';
-import { IsEmail, IsString, Matches, MaxLength } from 'class-validator';
-import {
-  PASSWORD_MESSAGE,
-  PASSWORD_PATTERN,
-  USERNAME_MESSAGE,
-  USERNAME_PATTERN,
-} from './user-validation';
+import { IsEmail, IsNumber, IsOptional, IsString, MinLength } from 'class-validator';
 
-// The starting balance is decided by the server (STARTING_BALANCE), so the
-// client cannot send a wallet value anymore.
 export class CreateUserDto {
   @IsString()
-  @Matches(USERNAME_PATTERN, { message: USERNAME_MESSAGE })
   username: string;
 
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim().toLowerCase() : value))
-  @IsEmail({}, { message: 'email must be a valid email address' })
-  @MaxLength(254)
+  @IsEmail()
   email: string;
 
   @IsString()
-  @Matches(PASSWORD_PATTERN, { message: PASSWORD_MESSAGE })
+  @MinLength(8)
   password: string;
+
+  @IsNumber()
+  wallet: number;
+
+  @IsOptional()
+  @IsString()
+  avatar?: string;
 }

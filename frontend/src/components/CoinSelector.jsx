@@ -1,10 +1,11 @@
-export default function CoinSelector({ coins, selectedCoin, onSelect }) {
+import { COINS } from '../data/constants';
+
+export default function CoinSelector({ selectedCoin, onSelect }) {
   return (
-    <div className="coin-selector" role="group" aria-label="Coin">
-      {coins.map((coin) => (
+    <div className="coin-selector">
+      {COINS.map((coin) => (
         <button
           key={coin}
-          aria-pressed={coin === selectedCoin}
           className={`coin-btn ${coin === selectedCoin ? 'active' : ''}`}
           onClick={() => onSelect(coin)}
         >

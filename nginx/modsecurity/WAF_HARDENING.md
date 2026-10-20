@@ -61,57 +61,6 @@ post is authorization logic that belongs to (and is enforced by) the
 backend, not the WAF. The WAF only decides whether the HTTP method is
 permitted to exist for this API at all.
 
-## `before-crs.conf` — base64 avatar in `PATCH /users/me` (`id:1000001`)
-
-The avatar is sent as a data URL (`data:image/webp;base64,...`). Base64 is
-random-looking text, so depending on the picture it matches SQL injection
-(`942120` on the `==` padding, `942200`, `942340`, `942450`), file access
-(`930120` on `/sys/`), command injection (`932235`, `932236`, `932260`), XSS
-(`941130`, `941170`) or PHP/SSRF (`934170`) patterns. With 100 random
-avatar-sized payloads, about 20% were blocked before this exclusion.
-
-Rather than disabling those rules, the exclusion removes **only the
-`ARGS:json.avatar` field** from the SQLi, XSS, RCE, LFI, RFI, PHP, SSRF and
-generic attack categories (`ctl:ruleRemoveTargetByTag`), and **only for
-`PATCH /users/me`**. The other fields of the same request and every other
-route are still fully inspected:
-
-| Test | Result |
-|------|--------|
-| 100 random 20 KB avatars | 100 accepted |
-| `username` = `x' OR 1=1 --` | 403 (WAF) |
-| `username` = `<script>alert(1)</script>` | 403 (WAF) |
-| SQL injection in `username` sent together with an avatar | 403 (WAF) |
-| avatar = `javascript:alert(1)` | 400 (backend validation) |
-
-The backend accepts the field only if it is a PNG/JPEG/WebP/GIF data URL made
-of base64 characters (max 200,000 characters), so the excluded field cannot
-carry an injection payload either.
-
-## `before-crs.conf` — monitoring queries (`id:1000002`, `id:1000003`)
-
-Grafana's browser UI sends every panel query to `/grafana/api/ds/query`, and
-the Prometheus UI sends them to `/prometheus/api/v1/...`. PromQL such as
-`sum(rate(http_requests_total[1m])) by (route)` matches SQL injection
-(`942150`, `942200`, `942410`, `942430`) and command injection (`932240`)
-patterns, and legend templates like `{{route}}` match the AngularJS template
-injection rule (`941380`). Every dashboard panel using `by (...)`, including
-*Backend - Requests/sec by route* and *Backend - p95 Latency by route*, showed
-"No data" because the request was blocked with a 403.
-
-The exclusions remove only the query fields (`expr` and `legendFormat` of the
-first three queries for Grafana, `query` and `match[]` for Prometheus) from
-the SQLi, RCE and XSS categories, and only on those two read-only endpoints
-(Grafana's also requires a login). Other parameters of the same requests and
-every other URL are still inspected:
-
-| Test | Result |
-|------|--------|
-| Dashboard *Infra Status* in Grafana | all panels load, no 403 |
-| `GET /prometheus/api/v1/query?query=sum(rate(...)) by (route)` | 200 |
-| same endpoint with `x=<script>alert(1)</script>` | 403 (WAF) |
-| `GET /prometheus/graph?q=1' OR 1=1--` | 403 (WAF) |
-
 ## `exclusions.conf` — Vite dev server false positive
 
 ```apache

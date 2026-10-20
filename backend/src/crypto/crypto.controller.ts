@@ -17,12 +17,6 @@ export class CryptoController {
 	    return this.krakenService.getTicker(symbol);
 	}
 
-  // Last 12 hours of 1-minute candles (open, high, low, close, volume).
-  @Get(':coin/candles')
-  getCandles(@Param('coin') coin: string) {
-    return this.krakenService.getCandles(`${coin.toUpperCase()}/EUR`);
-  }
-
   @Get(':coin/history')
   getHistory(
     @Param('coin') coin: string,

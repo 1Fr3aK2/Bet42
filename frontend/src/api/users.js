@@ -1,51 +1,92 @@
 // src/api/users.js
-import { apiFetch } from './client';
 
-// The starting balance is given by the server, the client only sends credentials.
-export function registerUser({ username, email, password }) {
-  return apiFetch('/users', {
+const API_URL = '';
+
+// The token is stored in localStorage by App.jsx, so the API helpers can read it
+// without every caller having to pass it down.
+function authHeaders(token = localStorage.getItem('token')) {
+  return {
+    'Content-Type': 'application/json',
+    ...(token && { Authorization: `Bearer ${token}` }),
+  };
+}
+
+// NestJS validation errors can come back as an array of messages.
+async function buildError(response, fallback) {
+  try {
+    const error = await response.json();
+    const message = Array.isArray(error.message) ? error.message.join(', ') : error.message;
+    return new Error(message || fallback);
+  } catch {
+    return new Error(fallback);
+  }
+}
+
+export async function registerUser({ username, email, password, wallet }) {
+  const response = await fetch(`${API_URL}/users`, {
     method: 'POST',
-    body: { username: username.trim(), email: email.trim().toLowerCase(), password },
-    token: '',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, email, password, wallet }),
   });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.message || 'Registration failed');
+  }
+
+  return response.json();
 }
 
-// { username: true|false|null, email: true|false|null } — true = still free
-export function checkAvailability({ username, email }) {
-  const params = new URLSearchParams();
-  if (username) params.set('username', username.trim());
-  if (email) params.set('email', email.trim().toLowerCase());
-  return apiFetch(`/users/availability?${params}`, { token: '' });
+// GET /users/me -> the logged-in user (username, avatar, role, ...)
+export async function getMe(token) {
+  const response = await fetch(`${API_URL}/users/me`, {
+    headers: authHeaders(token),
+  });
+
+  if (!response.ok) {
+    throw await buildError(response, 'Could not load profile');
+  }
+
+  return response.json();
 }
 
-// GET /users/me -> the logged-in user (username, avatar, role, wallet, xp...)
-export function getMe(token) {
-  return apiFetch('/users/me', { token });
-}
+// PATCH /users/me -> updates username and/or avatar, returns the updated user
+export async function updateUser({ username, avatarFile }) {
+  let avatar;
+  if (avatarFile) {
+    avatar = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result); // base64 data URL
+      reader.onerror = reject;
+      reader.readAsDataURL(avatarFile);
+    });
+  }
 
-// PATCH /users/me -> updates username and/or avatar (data URL, or null to remove it)
-export function updateUser({ username, avatar }) {
-  return apiFetch('/users/me', {
+  const response = await fetch(`${API_URL}/users/me`, {
     method: 'PATCH',
-    body: { username, ...(avatar !== undefined && { avatar }) },
+    headers: authHeaders(),
+    body: JSON.stringify({ username, ...(avatar && { avatar }) }),
   });
+
+  if (!response.ok) {
+    throw await buildError(response, 'Profile update failed');
+  }
+
+  return response.json();
 }
 
 // PATCH /users/password -> only currentPassword and newPassword are sent
 // (confirmPassword is checked in the form and not part of the backend DTO)
-export function changePassword({ currentPassword, newPassword }) {
-  return apiFetch('/users/password', {
+export async function changePassword({ currentPassword, newPassword }) {
+  const response = await fetch(`${API_URL}/users/password`, {
     method: 'PATCH',
-    body: { currentPassword, newPassword },
+    headers: authHeaders(),
+    body: JSON.stringify({ currentPassword, newPassword }),
   });
-}
 
-// DELETE /users/me -> deletes the account and all its data (needs the password)
-export function deleteAccount(password) {
-  return apiFetch('/users/me', { method: 'DELETE', body: { password } });
-}
+  if (!response.ok) {
+    throw await buildError(response, 'Password change failed');
+  }
 
-// Public profile of any player
-export function getProfile(id) {
-  return apiFetch(`/users/${id}/profile`);
+  return response.json();
 }
