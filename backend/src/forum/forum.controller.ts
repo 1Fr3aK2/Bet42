@@ -1,12 +1,13 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { ForumService } from './forum.service';
+import { ManualModerationService } from '../moderation/manual-moderation.service';
 import { CreatePostDto } from './dto/create-post.dto';
 import { UpdatePostDto } from './dto/update-post.dto';
 import { UpdateCommentDto } from './dto/update-comment.dto';
 import { CreateCommentDto } from './dto/create-comment.dto';
 import { CreateReportDto } from './dto/create-report.dto';
-import { ResolveReportDto } from './dto/resolve-report.dto';
-import { ReviewContentDto } from './dto/review-content.dto';
+import { ResolveReportDto } from '../moderation/dto/resolve-report.dto';
+import { ReviewContentDto } from '../moderation/dto/review-content.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth-guard';
 import { Role } from '@prisma/client';
 import { Roles } from '../auth/roles.decorator';
@@ -15,7 +16,11 @@ import { SearchPostsDto } from './dto/search-posts.dto';
 
 @Controller('forum')
 export class ForumController {
-  constructor(private readonly forumService: ForumService) {}
+
+  constructor(
+    private readonly forumService: ForumService,
+    private readonly manualModerationService: ManualModerationService,
+  ) {}
 
   @UseGuards(JwtAuthGuard)
   @Get()
@@ -111,7 +116,7 @@ export class ForumController {
   @Roles(Role.MODERATOR, Role.ADMIN)
   @Get('reports')
   getReports(@Query('status') status?: string) {
-    return this.forumService.findAllReports(status);
+    return this.manualModerationService.findAllReports(status);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -122,7 +127,7 @@ export class ForumController {
     @Body() resolveReportDto: ResolveReportDto,
     @Req() request,
   ) {
-    return this.forumService.resolveReport(
+    return this.manualModerationService.resolveReport(
       Number(id),
       resolveReportDto,
       request.user.id
@@ -133,14 +138,14 @@ export class ForumController {
   @Roles(Role.MODERATOR, Role.ADMIN)
   @Get('moderation/logs')
   getModerationLogs() {
-    return this.forumService.findAllModerationLogs();
+    return this.manualModerationService.findAllModerationLogs();
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.MODERATOR, Role.ADMIN)
   @Get('moderation/pending')
   getPendingContent() {
-    return this.forumService.findPendingContent();
+    return this.manualModerationService.findPendingContent();
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -151,7 +156,7 @@ export class ForumController {
     @Body() reviewContentDto: ReviewContentDto,
     @Req() request,
   ) {
-    return this.forumService.reviewPendingPost(
+    return this.manualModerationService.reviewPendingPost(
       Number(id),
       reviewContentDto,
       request.user.id
@@ -166,7 +171,7 @@ export class ForumController {
     @Body() reviewContentDto: ReviewContentDto,
     @Req() request,
   ) {
-    return this.forumService.reviewPendingComment(
+    return this.manualModerationService.reviewPendingComment(
       Number(id),
       reviewContentDto,
       request.user.id

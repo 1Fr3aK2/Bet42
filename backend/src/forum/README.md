@@ -417,27 +417,6 @@ Available actions:
 
 Manual reviews create moderation logs.
 
-### Direct text analysis
-
-Requires the `MODERATOR` or `ADMIN` role.
-
-```http
-POST /forum/moderation/analyze
-```
-
-Body:
-
-```json
-{
-  "text": "Text to analyze"
-}
-```
-
-The text has a maximum length of 5000 characters.
-
-This endpoint exposes the current moderation engine directly. Normal post and
-comment creation and editing invoke the same moderation service internally.
-
 ### Moderation logs
 
 Requires the `MODERATOR` or `ADMIN` role.

@@ -1,24 +1,17 @@
 import { Module } from '@nestjs/common';
-import { ModerationController } from './moderation.controller';
-import { ModerationService } from './moderation.service';
-import { RuleBasedModerationEngine } from './engines/rule-based-moderation.engine';
-import { MODERATION_ENGINE } from './engines/moderation-engine.token';
-import { AuthModule } from '../auth/auth.module';
 import { PrismaModule } from '../prisma/prisma.module';
+import { AutomaticModerationService } from './automatic-moderation.service';
+import { ManualModerationService } from './manual-moderation.service';
 
 @Module({
-  imports: [
-    AuthModule,
-    PrismaModule,
-  ],
+  imports: [PrismaModule],
   providers: [
-    ModerationService,
-    {
-      provide: MODERATION_ENGINE,
-      useClass: RuleBasedModerationEngine,
-    },
+    AutomaticModerationService,
+    ManualModerationService,
   ],
-  controllers: [ModerationController],
-  exports: [ModerationService],
+  exports: [
+    AutomaticModerationService,
+    ManualModerationService,
+  ],
 })
 export class ModerationModule {}

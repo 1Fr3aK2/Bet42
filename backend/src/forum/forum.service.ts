@@ -13,9 +13,7 @@ import { UpdatePostDto } from './dto/update-post.dto';
 import { UpdateCommentDto } from './dto/update-comment.dto';
 import { CreateCommentDto } from './dto/create-comment.dto';
 import { CreateReportDto } from './dto/create-report.dto';
-import { ResolveReportDto } from './dto/resolve-report.dto';
-import { ModerationService } from '../moderation/moderation.service';
-import { ReviewContentDto } from './dto/review-content.dto';
+import { AutomaticModerationService } from '../moderation/automatic-moderation.service';
 import { SearchPostsDto } from './dto/search-posts.dto';
 import { Prisma } from '@prisma/client';
 import { RateLimiterService } from '../rate-limiter/rate-limiter.service';
@@ -24,7 +22,7 @@ import { RateLimiterService } from '../rate-limiter/rate-limiter.service';
 export class ForumService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly moderationService: ModerationService,
+    private readonly automaticModerationService: AutomaticModerationService,
     private readonly rateLimiter: RateLimiterService,
   ) {}
 
@@ -113,11 +111,13 @@ export class ForumService {
   }
 
   async createPost(createPostDto: CreatePostDto, userId: number) {
+
     const allowed = await this.rateLimiter.checkLimit(
-      `forum_post:${userId}`,
-      5,
-      600,
+      `forum_post:${userId}`,   // Key used to identify the rate limit (per user)
+      5,                        // Maximum number of allowed requests
+      600,                      // Time window in seconds (10 minutes)
     );
+
     if (!allowed) {
       throw new HttpException(
         'You are posting too frequently. Please wait before creating another post.',
@@ -126,10 +126,10 @@ export class ForumService {
     }
 
     const textToAnalyze =
-      `${createPostDto.title}\n${createPostDto.content}`;
+      `${createPostDto.title}\n${createPostDto.content}`;     // Combines title and content into a single string; ${} inserts their values into it
 
     const moderation =
-      this.moderationService.analyzeText(textToAnalyze);
+      this.automaticModerationService.analyzeText(textToAnalyze);
 
     if (moderation.decision === 'rejected') {
       throw new BadRequestException({
@@ -193,7 +193,7 @@ export class ForumService {
       `${updatedTitle}\n${updatedContent}`;
 
     const moderation =
-      this.moderationService.analyzeText(textToAnalyze);
+      this.automaticModerationService.analyzeText(textToAnalyze);
 
     if (moderation.decision === 'rejected') {
       throw new BadRequestException({
@@ -249,11 +249,13 @@ export class ForumService {
     createCommentDto: CreateCommentDto,
     userId: number,
   ) {
+
     const allowed = await this.rateLimiter.checkLimit(
-      `forum_comment:${userId}`,
-      20,
-      600,
+      `forum_comment:${userId}`,  // Key used to identify the rate limit (per user)
+      20,                         // Maximum number of allowed requests
+      600,                        // Time window in seconds (10 minutes)
     );
+
     if (!allowed) {
       throw new HttpException(
         'You are commenting too frequently. Please wait before commenting again.',
@@ -277,7 +279,7 @@ export class ForumService {
       );
     }
 
-    const moderation = this.moderationService.analyzeText(
+    const moderation = this.automaticModerationService.analyzeText(
       createCommentDto.content,
     );
 
@@ -349,7 +351,7 @@ export class ForumService {
       updateCommentDto.content ?? comment.content;
 
     const moderation =
-      this.moderationService.analyzeText(updatedContent);
+      this.automaticModerationService.analyzeText(updatedContent);
 
     if (moderation.decision === 'rejected') {
       throw new BadRequestException({
@@ -400,12 +402,14 @@ export class ForumService {
     });
   }
 
-  async createReport(createReportDto: CreateReportDto, userId: number) {
+  async createReport(createReportDto: CreateReportDto, userId: number) {      // user action
+
     const allowed = await this.rateLimiter.checkLimit(
-      `forum_report:${userId}`,
-      10,
-      3600,
+      `forum_report:${userId}`,   // Key used to identify the rate limit (per user)
+      10,                         // Maximum number of allowed requests
+      3600,                       // Time window in seconds (1 hour)
     );
+
     if (!allowed) {
       throw new HttpException(
         'You are submitting too many reports. Please try again later.',
@@ -449,7 +453,7 @@ export class ForumService {
       }
     }
 
-    const existingReport = await this.prisma.report.findFirst({
+    const existingReport = await this.prisma.report.findFirst({   // Checks for an existing duplicate pending report
       where: {
         reporterId: userId,
         targetType: createReportDto.targetType,
@@ -472,229 +476,5 @@ export class ForumService {
         reporterId: userId,
       },
     });
-  }
-
-  findAllReports(status?: string) {
-    return this.prisma.report.findMany({
-      where: status
-        ? {
-            status,
-          }
-        : undefined,
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
-  }
-
-  async resolveReport(
-    reportId: number,
-    resolveReportDto: ResolveReportDto,
-    moderatorId: number,
-  ) {
-    const report = await this.prisma.report.findUnique({
-      where: { id: reportId },
-    });
-
-    if (!report) {
-      throw new NotFoundException(
-        `Report with id ${reportId} not found`,
-      );
-    }
-
-    if (report.status !== 'pending') {
-      throw new BadRequestException(
-        `Report with id ${reportId} has already been resolved`,
-      );
-    }
-
-    if (report.targetType === 'post') {
-      const post = await this.prisma.post.findUnique({
-        where: { id: report.targetId },
-      });
-
-      if (!post) {
-        throw new NotFoundException(
-          `Post with id ${report.targetId} not found`,
-        );
-      }
-
-      if (resolveReportDto.action === 'remove') {
-        await this.prisma.post.update({
-          where: { id: report.targetId },
-          data: { status: 'removed' },
-        });
-      }
-    }
-
-    if (report.targetType === 'comment') {
-      const comment = await this.prisma.comment.findUnique({
-        where: { id: report.targetId },
-      });
-
-      if (!comment) {
-        throw new NotFoundException(
-          `Comment with id ${report.targetId} not found`,
-        );
-      }
-
-      if (resolveReportDto.action === 'remove') {
-        await this.prisma.comment.update({
-          where: { id: report.targetId },
-          data: { status: 'removed' },
-        });
-      }
-    }
-
-    const updatedReport = await this.prisma.report.update({
-      where: { id: reportId },
-      data: {
-        status: 'resolved',
-        resolution: resolveReportDto.action,
-        moderatorId: moderatorId,
-        moderatorNote: resolveReportDto.note,
-        reviewedAt: new Date(),
-      },
-    });
-
-    await this.prisma.moderationLog.create({
-      data: {
-        reportId,
-        targetType: report.targetType,
-        targetId: report.targetId,
-        action: resolveReportDto.action,
-        reason: resolveReportDto.note,
-        moderatorId: moderatorId,
-      },
-    });
-
-    return updatedReport;
-  }
-
-  findAllModerationLogs() {
-    return this.prisma.moderationLog.findMany({
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
-  }
-
-  findPendingContent() {
-    return Promise.all([
-      this.prisma.post.findMany({
-        where: {
-          status: 'pending',
-        },
-        orderBy: {
-          createdAt: 'desc',
-        },
-      }),
-
-      this.prisma.comment.findMany({
-        where: {
-          status: 'pending',
-        },
-        orderBy: {
-          createdAt: 'desc',
-        },
-      }),
-    ]).then(([posts, comments]) => ({
-      posts,
-      comments,
-    }));
-  }
-
-  async reviewPendingPost(
-    postId: number,
-    reviewContentDto: ReviewContentDto,
-    moderatorId: number,
-  ) {
-    const post = await this.prisma.post.findUnique({
-      where: { id: postId },
-    });
-
-    if (!post) {
-      throw new NotFoundException(
-        `Post with id ${postId} not found`,
-      );
-    }
-
-    if (post.status !== 'pending') {
-      throw new BadRequestException(
-        `Post with id ${postId} is not pending review`,
-      );
-    }
-
-    const newStatus =
-      reviewContentDto.action === 'approve'
-        ? 'visible'
-        : 'removed';
-
-    const updatedPost = await this.prisma.post.update({
-      where: { id: postId },
-      data: {
-        status: newStatus,
-      },
-    });
-
-    await this.prisma.moderationLog.create({
-      data: {
-        reportId: null,
-        targetType: 'post',
-        targetId: postId,
-        action: reviewContentDto.action,
-        reason: reviewContentDto.note,
-        moderatorId,
-      },
-    });
-
-    return updatedPost;
-  }
-
-  async reviewPendingComment(
-    commentId: number,
-    reviewContentDto: ReviewContentDto,
-    moderatorId: number,
-  ) {
-    const comment = await this.prisma.comment.findUnique({
-      where: { id: commentId },
-    });
-
-    if (!comment) {
-      throw new NotFoundException(
-        `Comment with id ${commentId} not found`,
-      );
-    }
-
-    if (comment.status !== 'pending') {
-      throw new BadRequestException(
-        `Comment with id ${commentId} is not pending review`,
-      );
-    }
-
-    const newStatus =
-      reviewContentDto.action === 'approve'
-        ? 'visible'
-        : 'removed';
-
-    const updatedComment = await this.prisma.comment.update({
-      where: { id: commentId },
-      data: {
-        status: newStatus,
-      },
-    });
-
-    await this.prisma.moderationLog.create({
-      data: {
-        reportId: null,
-        targetType: 'comment',
-        targetId: commentId,
-        action: reviewContentDto.action,
-        reason: reviewContentDto.note,
-        moderatorId,
-      },
-    });
-
-    return updatedComment;
   }
 }

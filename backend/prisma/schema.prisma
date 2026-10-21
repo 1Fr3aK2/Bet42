@@ -26,31 +26,30 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  posts            Post[]
+  comments         Comment[]
 
-  posts    Post[]
-  comments Comment[]
+  reportsCreated   Report[]   @relation("ReportsCreated")
+  reportsModerated Report[]   @relation("ReportsModerated")
 
-  reportsCreated   Report[] @relation("ReportsCreated")
-  reportsModerated Report[] @relation("ReportsModerated")
-
-  moderationLogs ModerationLog[]
+  moderationLogs   ModerationLog[]
 }
 
 model Post {
   id                 Int      @id @default(autoincrement())
   title              String
   content            String
-  status             String   @default("visible")
-  moderationDecision String?
+  status             String   @default("visible")       // visible | pending | removed
+  moderationDecision String?                            // approved | flagged | rejected
   moderationScore    Float?
   moderationReasons  String[]
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
-  authorId Int
-  author   User @relation(fields: [authorId], references: [id])
+  authorId           Int
+  author             User     @relation(fields: [authorId], references: [id])
 
-  comments Comment[]
+  comments           Comment[]
 }
 
 model Comment {
@@ -63,11 +62,11 @@ model Comment {
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
-  postId Int
-  post   Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  postId             Int
+  post               Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
 
-  authorId Int
-  author   User @relation(fields: [authorId], references: [id])
+  authorId           Int
+  author             User     @relation(fields: [authorId], references: [id])
 }
 
 model Report {
@@ -84,8 +83,8 @@ model Report {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  reporter  User  @relation("ReportsCreated", fields: [reporterId], references: [id])
-  moderator User? @relation("ReportsModerated", fields: [moderatorId], references: [id])
+  reporter      User      @relation("ReportsCreated", fields: [reporterId], references: [id])
+  moderator     User?     @relation("ReportsModerated", fields: [moderatorId], references: [id])
 }
 
 model ModerationLog {
@@ -98,6 +97,5 @@ model ModerationLog {
   moderatorId Int
   createdAt   DateTime @default(now())
 
-
-  moderator User @relation(fields: [moderatorId], references: [id])
+  moderator   User     @relation(fields: [moderatorId], references: [id])
 }
