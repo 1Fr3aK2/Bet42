@@ -12,6 +12,8 @@ import RegisterModal from './components/RegisterModal';
 import LoginModal from './components/LoginModal';
 import SettingsPage from './components/SettingsPage';
 import ForumPage from './components/Forum/ForumPage';
+import ModerationPage from './components/Forum/ModerationPage';
+import AdminUsersPage from './components/AdminUsersPage';
 import { fakePrices, PAYOUT, MINUTE, WINDOW } from './data/constants';
 import { socket } from './api/socket';
 import { getMe } from './api/users';
@@ -51,6 +53,8 @@ export default function App() {
   const [showLogin, setShowLogin] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showForum, setShowForum] = useState(false);
+  const [showModeration, setShowModeration] = useState(false);
+  const [showAdminUsers, setShowAdminUsers] = useState(false);
   const [currentUser, setCurrentUser] = useState(() => {
     const saved = localStorage.getItem('currentUser');
     return saved ? JSON.parse(saved) : null;
@@ -227,6 +231,8 @@ export default function App() {
         onLoginClick={() => setShowLogin(true)}
         onSettingsClick={() => setShowSettings(true)}
         onForumClick={() => setShowForum(true)}
+        onModerationClick={() => setShowModeration(true)}
+        onAdminClick={() => setShowAdminUsers(true)}
         currentUser={currentUser}
         onLogout={() => { setCurrentUser(null); setToken(null); }}
       />
@@ -315,6 +321,21 @@ export default function App() {
           token={token}
           currentUser={currentUser}
           onClose={() => setShowForum(false)}
+        />
+      )}
+
+      {showModeration && (
+        <ModerationPage
+          token={token}
+          onClose={() => setShowModeration(false)}
+        />
+      )}
+
+      {showAdminUsers && (
+        <AdminUsersPage
+          token={token}
+          currentUser={currentUser}
+          onClose={() => setShowAdminUsers(false)}
         />
       )}
     </>
