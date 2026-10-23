@@ -116,10 +116,10 @@ curl -sf -u "$AUTH" -X PUT "http://elasticsearch:9200/waf-audit-*/_settings?igno
 
 # Criar papel restrito permanente para o Logstash
 echo "Creating permanent logstash_writer role..."
-curl -sf -u "$AUTH" -X POST "http://elasticsearch:9200/_security/role/logstash_writer_role" \
+curl -sf -u "elastic:$ELASTIC_PASSWORD" -X POST "http://elasticsearch:9200/_security/role/logstash_writer_role" \
   -H "Content-Type: application/json" \
   -d '{
-    "cluster": ["monitor"],
+    "cluster": ["monitor", "manage_index_templates"],
     "indices": [
       {
         "names": ["transcendence-logs-*", "waf-audit-*"],
