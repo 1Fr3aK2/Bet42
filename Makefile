@@ -85,10 +85,10 @@ clean:
 fclean:
 	@echo "Full cleaning Transcendence (containers, volumes, images, certs, backups)..."
 	@$(COMPOSE) down -v --rmi all --remove-orphans
+	@docker run --rm -v "$(CURDIR)/backups:/backups" alpine sh -c "rm -rf /backups/* /backups/.[!.]* 2>/dev/null || true"
 	@rm -rf nginx/certs/ vault/certs/ backups/ backend/dist/
 	@rm -rf backend/node_modules/ frontend/node_modules/
 	@echo "Cleaned up all generated files, volumes, and images."
-
 
 re: fclean all
 
