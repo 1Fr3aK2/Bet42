@@ -114,7 +114,30 @@ curl -sf -u "$AUTH" -X PUT "http://elasticsearch:9200/waf-audit-*/_settings?igno
   -H "Content-Type: application/json" \
   -d '{"index.lifecycle.name": "transcendence-logs-policy"}' || true
 
+# Criar papel restrito permanente para o Logstash
+echo "Creating permanent logstash_writer role..."
+curl -sf -u "$AUTH" -X POST "http://elasticsearch:9200/_security/role/logstash_writer_role" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "cluster": ["monitor"],
+    "indices": [
+      {
+        "names": ["transcendence-logs-*", "waf-audit-*"],
+        "privileges": ["create_index", "create", "write", "auto_configure", "view_index_metadata"]
+      }
+    ]
+  }'
+
+# Criar utilizador restrito permanente para o Logstash
+echo "Creating logstash_writer user..."
+curl -sf -u "elastic:$ELASTIC_PASSWORD" -X POST "http://elasticsearch:9200/_security/user/logstash_writer" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "password": "'"$ELASTIC_PASSWORD"'",
+    "roles": ["logstash_writer_role"]
+  }'
+
 echo "Cleaning up ilm_admin user..."
 curl -sf -u "elastic:$ELASTIC_PASSWORD" -X DELETE "http://elasticsearch:9200/_security/user/ilm_admin"
 
-echo "ILM and SLM setup complete."
+echo "ILM, SLM and Logstash least-privilege setup complete."
