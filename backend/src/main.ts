@@ -11,8 +11,16 @@ async function bootstrap() {
 
   const app = await NestFactory.create(AppModule);
 
+  // Allow requests from:
+  //   - http://localhost:5173  → local dev mode (npm run dev, outside Docker)
+  //   - https://localhost      → production via Nginx on port 443
+  //   - https://localhost:8443 → production on rootless Docker (alternative port)
   app.enableCors({
-    origin: 'http://localhost:5173',
+    origin: [
+      'http://localhost:5173',
+      'https://localhost',
+      'https://localhost:8443',
+    ],
     credentials: true,
   });
 
