@@ -61,6 +61,30 @@ post is authorization logic that belongs to (and is enforced by) the
 backend, not the WAF. The WAF only decides whether the HTTP method is
 permitted to exist for this API at all.
 
+## `before-crs.conf` — Base64 Avatar Upload Exclusion
+
+```apache
+SecRule REQUEST_METHOD "@streq PATCH" \
+  "id:1000001,\
+  phase:1,\
+  nolog,\
+  pass,\
+  t:none,\
+  chain"
+  SecRule REQUEST_URI "@rx ^/users/me(/|\?|$)" \
+    "t:none,\
+    ctl:ruleRemoveById=934170,\
+    ctl:ruleRemoveById=941130,\
+    ctl:ruleRemoveById=941170,\
+    ctl:ruleRemoveById=932235,\
+    ctl:ruleRemoveById=932236,\
+    ctl:ruleRemoveById=932260"
+```
+
+A base64 data URL (`data:image/...;base64,...`) sent during profile updates trips several CRS rules detecting PHP injection (`934170`), XSS data attributes (`941130`, `941170`), and Unix command injection (`932235`, `932236`, `932260`).
+
+By using a targeted regular expression (`@rx ^/users/me(/|\?|$)`), this exclusion applies safely even when trailing slashes or query parameters are present, without leaving any other endpoint unprotected.
+
 ## `exclusions.conf` — Vite dev server false positive
 
 ```apache

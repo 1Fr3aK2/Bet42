@@ -54,10 +54,7 @@ The stack runs entirely on Docker Compose, started with a single command:
   so the backend never starts against an inconsistent database.
 - **postgres_backup** — automated daily `pg_dump`, 7-day retention.
 
-Certificates are generated locally via `mkcert`, trusted by the local
-machine's CA store. All inter-service traffic inside the Docker network is
-unencrypted by design (permitted by the project subject); every path reachable
-from a browser goes through nginx over HTTPS.
+Certificates are generated locally via `mkcert` with an automatic, native `openssl` fallback featuring Subject Alternative Name (SAN) extensions, completely eliminating any dependency on `sudo`. All inter-service traffic inside the Docker network is unencrypted by design (permitted by the project subject); every path reachable from a browser goes through nginx over HTTPS.
 
 ---
 
@@ -111,6 +108,8 @@ pattern: value lives in Vault, is fetched via AppRole login at backend
 bootstrap, and is never present as a plain environment variable on the
 `backend` container):
 
+- `DATABASE_URL` (PostgreSQL credentials fetched from secret `postgres` and assembled in-memory)
+- `REDIS_URL` (Redis password fetched from secret `redis` and assembled in-memory)
 - `ADMIN_API_KEY` (secret `admin-api`)
 - `ADMIN_USERNAME` / `ADMIN_EMAIL` / `ADMIN_PASSWORD` (secret `admin-account`)
 - `JWT_SECRET` (secret `jwt`)
@@ -253,7 +252,11 @@ inbound rule `949110` and the outbound rule `959100` — a first version only
 handled the inbound case).
 
 **Secure access (subject requirement):** `xpack.security.enabled=true` on
-Elasticsearch. Logstash authenticates as `elastic`. Kibana — which, unlike
+Elasticsearch. Following the principle of least privilege, Logstash does not run as
+the `elastic` superuser; instead, it authenticates as a dedicated `logstash_writer`
+user with a restricted role (`logstash_writer_role` granting only index creation and
+write permissions on `transcendence-logs-*` and `waf-audit-*`), provisioned automatically
+during startup by `ilm-init.sh`. Kibana — which, unlike
 Logstash, refuses to authenticate as `elastic` and requires a dedicated
 service account — authenticates as `kibana_system`, with its password set by
 a one-shot `kibana_user_init` service. Kibana is reachable only via nginx at
@@ -371,15 +374,17 @@ this project's scope rather than a silently dropped item.
 
 ---
 
-## 10. Swagger / Admin API Documentation Exposure
+## 10. Swagger / Admin API Documentation Exposure & Usability
 
 The Admin Public API's Swagger UI (`/api/admin/docs`, `/api/admin/docs-json`)
-was reachable with no authentication at all — full endpoint documentation for
-an admin-privileged API, open to anyone. Fixed with an Express middleware in
-`main.ts`, registered before `SwaggerModule.setup()`, reusing the same
-hash + `timingSafeEqual` comparison against `X-API-Key` already used by
-`AdminApiKeyGuard`. Verified: both paths return `401` without the key, `200`
-with the correct one.
+provides full interactive endpoint documentation for the administrative API.
+To prevent browser navigation lockout (since standard browsers cannot inject custom headers
+like `X-API-Key` on address bar GET requests), the documentation UI is accessible directly,
+while interactive endpoint execution is secured via Swagger's native `addApiKey` (Authorize 🔒)
+configuration. Every API call made through Swagger or external clients strictly enforces the
+`AdminApiKeyGuard` using SHA-256 hashing and `timingSafeEqual()` comparisons. Verified:
+all protected endpoints return `401 Unauthorized` without the key, and execute successfully
+with the valid key provided.
 
 ---
 

@@ -135,12 +135,20 @@ location /crypto {
 ## WebSocket routes
 
 ```nginx
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
 location /ws {
     proxy_pass $upstream_backend;
+    proxy_http_version 1.1;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection "upgrade";
+    proxy_set_header Connection $connection_upgrade;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
 }
 
 location /socket.io/ {
@@ -149,14 +157,19 @@ location /socket.io/ {
         SecRuleRemoveById 920420
     ';
     proxy_pass $upstream_backend;
+    proxy_http_version 1.1;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection "upgrade";
+    proxy_set_header Connection $connection_upgrade;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
 }
 ```
 
 No dedicated rate limit on either — these are persistent connections (live BTC price feed, trades), not discrete requests that a `limit_req` model fits well.
+
+WebSockets explicitly enforce `proxy_http_version 1.1;` (HTTP 1.0 does not support protocol upgrades), utilize dynamic `$connection_upgrade` handling, and set `proxy_read_timeout 3600s;` to prevent idle connections from being dropped by the proxy's default 60s timeout.
 
 `/socket.io/` (added for the frontend's real-time crypto price data) needs one scoped ModSecurity exclusion: **rule `920420`** was flagging legitimate WebSocket upgrade requests as malformed. The WAF is **not** disabled for this location (`modsecurity on;` is kept explicit) — only this one rule is removed, scoped to this `location` block alone; every other rule still applies to WebSocket traffic.
 

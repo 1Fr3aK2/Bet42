@@ -16,6 +16,8 @@ Interactive Swagger documentation:
 https://localhost/api/admin/docs
 ```
 
+The Swagger UI documentation page is accessible directly via the browser. To execute and test protected endpoints through the interface, click the **Authorize 🔒** button at the top of the Swagger UI and enter your `ADMIN_API_KEY`. The interface will automatically attach the `X-API-Key` header to all subsequent API calls.
+
 ## Authentication
 
 All Public Admin API endpoints are protected by `AdminApiKeyGuard`.

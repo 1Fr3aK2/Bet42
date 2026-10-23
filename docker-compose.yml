@@ -42,8 +42,7 @@ services:
     networks:
       - transcendence
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
-      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      POSTGRES_DB: ${POSTGRES_DB}
       VAULT_ADDR: ${VAULT_ADDR}
       VAULT_CACERT: ${VAULT_CACERT}
       NODE_EXTRA_CA_CERTS: ${VAULT_CACERT}
@@ -414,6 +413,8 @@ services:
     depends_on:
       elasticsearch:
         condition: service_healthy
+      elasticsearch_ilm_init:
+        condition: service_completed_successfully
     restart: unless-stopped
 
 
