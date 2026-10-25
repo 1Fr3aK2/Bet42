@@ -1,1 +1,0 @@
-export const MODERATION_ENGINE = Symbol('MODERATION_ENGINE');

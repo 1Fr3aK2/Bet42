@@ -6,9 +6,8 @@ interface VaultKvResponse {
   data: { data: Record<string, string> };
 }
 
-
 export async function loadSecretsFromVault(): Promise<void> {
-  const vaultAddr = process.env.VAULT_ADDR; // ex: https://vault:8200
+  const vaultAddr = process.env.VAULT_ADDR;
 
   if (!vaultAddr) {
     throw new Error('VAULT_ADDR not defined');
@@ -16,6 +15,7 @@ export async function loadSecretsFromVault(): Promise<void> {
 
   const roleId = readFileSync(`${APPROLE_DIR}/role_id`, 'utf-8').trim();
   const secretId = readFileSync(`${APPROLE_DIR}/secret_id`, 'utf-8').trim();
+
 
   const loginRes = await fetch(`${vaultAddr}/v1/auth/approle/login`, {
     method: 'POST',
@@ -30,6 +30,23 @@ export async function loadSecretsFromVault(): Promise<void> {
 
   const loginBody = await loginRes.json();
   const clientToken = loginBody.auth.client_token;
+
+
+  const pgData = await readVaultSecret(vaultAddr, clientToken, 'postgres');
+  const pgUser = pgData.user;
+  const pgPassword = pgData.password;
+  const pgDb = process.env.POSTGRES_DB || 'appdb';
+  if (!pgUser || !pgPassword) {
+    throw new Error('secret/postgres needs the fields "user" and "password" defined');
+  }
+  process.env.DATABASE_URL = `postgresql://${pgUser}:${pgPassword}@postgres:5432/${pgDb}?schema=public`;
+
+  const redisData = await readVaultSecret(vaultAddr, clientToken, 'redis');
+  const redisPassword = redisData.password;
+  if (!redisPassword) {
+    throw new Error('secret/redis needs the field "password" defined');
+  }
+  process.env.REDIS_URL = `redis://:${redisPassword}@redis:6379`;
 
   const adminApiData = await readVaultSecret(vaultAddr, clientToken, 'admin-api');
   const adminApiKey = adminApiData.key;

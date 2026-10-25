@@ -16,11 +16,11 @@ Module of **ft_transcendence** responsible for loading the application's secrets
 │    Vault     │ ──► returns client_token
 └──────┬───────┘
        │ 3. GET /v1/secret/data/<path>   (X-Vault-Token header)
-       │    admin-api · admin-account · jwt
+       │    postgres · redis · admin-api · admin-account · jwt
        ▼
 ┌──────────────┐
-│ process.env  │  ADMIN_API_KEY, ADMIN_USERNAME, ADMIN_EMAIL,
-│              │  ADMIN_PASSWORD, JWT_SECRET
+│ process.env  │  DATABASE_URL, REDIS_URL, ADMIN_API_KEY,
+│              │  ADMIN_USERNAME, ADMIN_EMAIL, ADMIN_PASSWORD, JWT_SECRET
 └──────────────┘
 ```
 
@@ -54,6 +54,8 @@ The path is defined by the `APPROLE_DIR` constant at the top of the file.
 
 | Path                   | Required fields                     | Resulting environment variable(s)                       |
 |------------------------|-------------------------------------|---------------------------------------------------------|
+| `secret/postgres`      | `user`, `password`                  | `DATABASE_URL` (derived dynamically)                    |
+| `secret/redis`         | `password`                          | `REDIS_URL` (derived dynamically)                       |
 | `secret/admin-api`     | `key`                               | `ADMIN_API_KEY`                                         |
 | `secret/admin-account` | `username`, `email`, `password`     | `ADMIN_USERNAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`       |
 | `secret/jwt`           | `secret`                            | `JWT_SECRET`                                            |
@@ -71,6 +73,8 @@ vault kv put secret/jwt secret="<value>"
 The role only needs read access to these three paths (least privilege):
 
 ```hcl
+path "secret/data/postgres"      { capabilities = ["read"] }
+path "secret/data/redis"         { capabilities = ["read"] }
 path "secret/data/admin-api"     { capabilities = ["read"] }
 path "secret/data/admin-account" { capabilities = ["read"] }
 path "secret/data/jwt"           { capabilities = ["read"] }

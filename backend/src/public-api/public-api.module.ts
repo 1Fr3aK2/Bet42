@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { PublicApiController } from './public-api.controller';
 import { ForumModule } from '../forum/forum.module';
 import { UsersModule } from '../users/users.module';
+import { ModerationModule } from '../moderation/moderation.module';
 import { RateLimiterModule } from '../rate-limiter/rate-limiter.module';
 import { AdminApiKeyGuard } from './admin-api-key.guard';
 import { PrismaModule } from '../prisma/prisma.module';
@@ -14,6 +15,7 @@ import { AdminApiRateLimitGuard } from './admin-api-rate-limit.guard';
     UsersModule,
     RateLimiterModule,
     PrismaModule,
+    ModerationModule,
   ],
   controllers: [PublicApiController],
   providers: [AdminApiKeyGuard, AdminIdentityService, AdminApiRateLimitGuard],

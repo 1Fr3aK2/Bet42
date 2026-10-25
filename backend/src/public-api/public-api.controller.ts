@@ -2,7 +2,8 @@ import { Body, Controller, Delete, Get, Param, Post, Put, Patch, Query, UseGuard
 import { UsersService } from '../users/users.service';
 import { UpdateUserRoleDto } from '../users/update-user-role.dto';
 import { ForumService } from '../forum/forum.service';
-import { ResolveReportDto } from '../forum/dto/resolve-report.dto';
+import { ManualModerationService } from '../moderation/manual-moderation.service';
+import { ResolveReportDto } from '../moderation/dto/resolve-report.dto';
 import { AdminApiKeyGuard } from './admin-api-key.guard';
 import { AdminIdentityService } from './admin-identity.service';
 import { CreatePostDto } from '../forum/dto/create-post.dto';
@@ -25,6 +26,7 @@ export class PublicApiController {
   constructor(
     private readonly usersService: UsersService,
     private readonly forumService: ForumService,
+    private readonly manualModerationService: ManualModerationService,
     private readonly adminIdentityService: AdminIdentityService,
   ) {}
 
@@ -63,7 +65,7 @@ export class PublicApiController {
   @ApiResponse({ status: 200, description: 'Reports retrieved successfully' })
   @Get('reports')
   getReports(@Query('status') status?: string) {
-    return this.forumService.findAllReports(status);
+    return this.manualModerationService.findAllReports(status);
   }
 
   @ApiOperation({ summary: 'Resolve a moderation report' })
@@ -81,7 +83,7 @@ export class PublicApiController {
     const adminId =
       await this.adminIdentityService.getAdminId();
 
-    return this.forumService.resolveReport(
+    return this.manualModerationService.resolveReport(
       Number(id),
       resolveReportDto,
       adminId,
@@ -92,14 +94,14 @@ export class PublicApiController {
   @ApiResponse({ status: 200, description: 'Pending content retrieved successfully' })
   @Get('moderation/pending')
   getPendingContent() {
-    return this.forumService.findPendingContent();
+    return this.manualModerationService.findPendingContent();
   }
 
   @ApiOperation({ summary: 'List moderation logs' })
   @ApiResponse({ status: 200, description: 'Moderation logs retrieved successfully' })
   @Get('moderation/logs')
   getModerationLogs() {
-    return this.forumService.findAllModerationLogs();
+    return this.manualModerationService.findAllModerationLogs();
   }
 
   @ApiOperation({ summary: 'Create a post as the administrator' })
