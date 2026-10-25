@@ -90,3 +90,31 @@ export async function changePassword({ currentPassword, newPassword }) {
 
   return response.json();
 }
+
+// GET /users -> every user (admin only)
+export async function getUsers(token) {
+  const response = await fetch(`${API_URL}/users`, {
+    headers: authHeaders(token),
+  });
+
+  if (!response.ok) {
+    throw await buildError(response, 'Could not load users');
+  }
+
+  return response.json();
+}
+
+// PATCH /users/:id/role -> promote to MODERATOR or demote back to USER (admin only)
+export async function updateUserRole(token, id, role) {
+  const response = await fetch(`${API_URL}/users/${id}/role`, {
+    method: 'PATCH',
+    headers: authHeaders(token),
+    body: JSON.stringify({ role }),
+  });
+
+  if (!response.ok) {
+    throw await buildError(response, 'Could not change the role');
+  }
+
+  return response.json();
+}
