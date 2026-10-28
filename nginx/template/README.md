@@ -82,6 +82,27 @@ The fix has two parts:
 
 This makes the infrastructure resilient to container restarts: the backend (or any other service) can be recreated without needing to also restart nginx.
 
+## Frontend routing and Vite HMR WebSocket support
+
+```nginx
+location / {
+    proxy_pass $upstream_frontend;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+Routes all root traffic to the frontend service (`frontend:5173`). 
+
+Crucially, `proxy_http_version 1.1;`, `proxy_set_header Upgrade $http_upgrade;`, and `proxy_set_header Connection $connection_upgrade;` are configured on this block. In modern Vite development environments, the browser client establishes a WebSocket connection on the root origin (`wss://localhost/?token=...`) for Hot Module Replacement (HMR) and live development state synchronization. 
+
+Without WebSocket upgrade headers, Nginx processes the handshake as a standard HTTP request and returns `200 OK` rather than `101 Switching Protocols`. This previously caused `Error during WebSocket handshake: Unexpected response code: 200` and secondary `SyntaxError: Failed to construct 'WebSocket'` exceptions in the Google Chrome developer console. Including the upgrade headers ensures compliant, error-free reverse-proxying across all client connections, satisfying the subject v21.1 mandate of zero browser console errors.
+
 ## Locations per backend module
 
 Each backend module has its own `location`, matching the real route prefix in NestJS (nginx has no way to know this on its own — it has to be maintained manually every time a new module is added):
