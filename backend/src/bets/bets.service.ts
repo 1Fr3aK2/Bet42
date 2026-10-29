@@ -6,6 +6,7 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Bet } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { KrakenService } from '../crypto/kraken.service';
@@ -27,6 +28,7 @@ export class BetsService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly prisma: PrismaService,
     private readonly kraken: KrakenService,
+    private readonly events: EventEmitter2,
   ) {}
 
   onModuleInit() {
@@ -54,7 +56,7 @@ export class BetsService implements OnModuleInit, OnModuleDestroy {
     const ticker = this.kraken.getTicker(`${coin}/EUR`);
     if (!ticker) throw new BadRequestException(`No live price for ${coin}`);
 
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       // Debit the stake only if the balance covers it. This single
       // "UPDATE ... WHERE wallet >= amount" is atomic in PostgreSQL, so bets
       // sent at the same time can never take the balance below zero.
@@ -85,6 +87,10 @@ export class BetsService implements OnModuleInit, OnModuleDestroy {
 
       return { bet, balance: user.wallet };
     });
+
+    // Tells the user's open pages (BetsGateway) that their bets changed.
+    this.events.emit('bets.changed', { userId });
+    return result;
   }
 
   listBets(userId: number, query: ListBetsDto) {
@@ -158,6 +164,8 @@ export class BetsService implements OnModuleInit, OnModuleDestroy {
       return true;
     });
     if (!settled) return;
+
+    this.events.emit('bets.changed', { userId: bet.userId });
 
     this.logger.log(
       `Bet ${bet.id} ${status}: ${bet.coin} ${bet.direction} ${bet.amount} T$, ` +

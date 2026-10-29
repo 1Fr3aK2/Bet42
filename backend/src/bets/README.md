@@ -151,15 +151,25 @@ An array of bet objects (same shape as above). A settled bet has `status`
 - Each bet lasts 60 s from the moment it is placed: there are no rounds and
   no queued bets on the server. A countdown can use `expiresAt`.
 - About 1–2 s after `expiresAt`, read `GET /users/me/bets?status=settled` and
-  the balance to show the result.
+  the balance to show the result, or wait for `bets:changed` on the socket
+  below.
 - Only `BTC` and `ETH` have live prices.
 - The registration form can keep sending `wallet`: it is ignored.
 - For errors, show the `message` of the `400` response.
+
+## Real-time channel
+
+`BetsGateway` is the Socket.IO namespace `/bets`. The browser connects with its
+login token, `io('/bets', { auth: { token } })`; a missing or invalid token is
+disconnected. Each socket joins a room of its own user, and when one of that
+user's bets is placed or settled the server emits `bets:changed` to that room
+only. The analytics dashboard uses it to reload by itself.
 
 ## Testing
 
 `scripts/test-bets.sh` creates two users and checks every rule above through
 nginx (about 75 seconds, because it waits for the bets to be settled).
+`scripts/test-analytics.sh` also checks the `/bets` socket.
 
 ## Files
 
@@ -168,6 +178,7 @@ nginx (about 75 seconds, because it waits for the bets to be settled).
 | `bets.constants.ts` | rules (starting balance, duration, payout, timings) |
 | `bets.service.ts` | balance, placing and listing bets, settlement loop |
 | `bets.controller.ts` | the three routes under `/users/me` |
-| `bets.module.ts` | wires Prisma, Auth and the Kraken price feed |
+| `bets.gateway.ts` | the `/bets` socket that tells a user their bets changed |
+| `bets.module.ts` | wires Prisma, Auth, JWT and the Kraken price feed |
 | `dto/create-bet.dto.ts`, `dto/list-bets.dto.ts` | request validation |
 | `../../prisma/migrations/20261029125730_add_bets` | creates the `Bet` table |
