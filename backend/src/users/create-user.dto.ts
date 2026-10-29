@@ -11,8 +11,11 @@ export class CreateUserDto {
   @MinLength(8)
   password: string;
 
+  // Ignored: the server sets the starting balance (see users.service.ts).
+  // Still accepted because the current registration form sends it.
+  @IsOptional()
   @IsNumber()
-  wallet: number;
+  wallet?: number;
 
   @IsOptional()
   @IsString()

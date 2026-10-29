@@ -31,7 +31,7 @@ restricted to admins; users can only modify their own profile and password.
 | `username` | string | required                      |
 | `email`    | string | required, valid email format  |
 | `password` | string | required, ≥ 8 characters      |
-| `wallet`   | number | required                      |
+| `wallet`   | number | optional, ignored: new accounts always start with 1000 (set by the server) |
 | `avatar`   | string | optional                      |
 
 Password is hashed with **bcrypt** (10 rounds) before storage.
@@ -45,7 +45,7 @@ Password is hashed with **bcrypt** (10 rounds) before storage.
   "email": "pedro@test.com",
   "role": "USER",
   "avatar": null,
-  "wallet": 0,
+  "wallet": 1000,
   "wins": 0,
   "losses": 0,
   "createdAt": "2026-01-01T00:00:00.000Z",
