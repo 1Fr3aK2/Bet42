@@ -73,17 +73,49 @@ SecRule REQUEST_METHOD "@streq PATCH" \
   chain"
   SecRule REQUEST_URI "@rx ^/users/me(/|\?|$)" \
     "t:none,\
-    ctl:ruleRemoveById=934170,\
-    ctl:ruleRemoveById=941130,\
-    ctl:ruleRemoveById=941170,\
-    ctl:ruleRemoveById=932235,\
-    ctl:ruleRemoveById=932236,\
-    ctl:ruleRemoveById=932260"
+    ctl:ruleRemoveTargetById=934170;ARGS:json.avatar,\
+    ctl:ruleRemoveTargetById=941130;ARGS:json.avatar,\
+    ctl:ruleRemoveTargetById=941170;ARGS:json.avatar,\
+    ctl:ruleRemoveTargetById=932235;ARGS:json.avatar,\
+    ctl:ruleRemoveTargetById=932236;ARGS:json.avatar,\
+    ctl:ruleRemoveTargetById=932260;ARGS:json.avatar"
 ```
 
-A base64 data URL (`data:image/...;base64,...`) sent during profile updates trips several CRS rules detecting PHP injection (`934170`), XSS data attributes (`941130`, `941170`), and Unix command injection (`932235`, `932236`, `932260`).
+A base64 data URL (`data:image/...;base64,...`) sent during profile updates
+trips several CRS rules detecting PHP injection (`934170`), XSS data
+attributes (`941130`, `941170`), and Unix command injection (`932235`,
+`932236`, `932260`).
 
-By using a targeted regular expression (`@rx ^/users/me(/|\?|$)`), this exclusion applies safely even when trailing slashes or query parameters are present, without leaving any other endpoint unprotected.
+**v2 (this revision):** the original version of this exclusion used
+`ctl:ruleRemoveById`, which disables the listed rules for the *entire*
+request, not just the `avatar` field. Since `PATCH /users/me` also accepts
+other fields (`username`, `email`), those rules were silently disabled for
+them too. This was confirmed exploitable during a pentest pass: a `data:`
+scheme + base64 payload (e.g. `data:text/html;base64,PHNjcmlwdD4=`) sent in
+`username` or `email` was accepted (`200`) instead of blocked, before this
+fix.
+
+Fixed by scoping the exclusion to the specific field with
+`ctl:ruleRemoveTargetById=<id>;ARGS:json.avatar` instead of
+`ctl:ruleRemoveById=<id>`. Two things worth knowing if this is touched
+again:
+
+- The `json.` prefix matters: for JSON request bodies, ModSecurity names
+  the variable `ARGS:json.<field>`, not `ARGS:<field>`. Using the latter
+  silently has no effect — it was tried first and caused the *legitimate*
+  avatar upload to be falsely blocked, because the target rules were never
+  actually being excluded from anything.
+- The `@rx ^/users/me(/|\?|$)` regex scoping to the one endpoint (handling
+  trailing slash / query string) was correct from the start and needed no
+  change — the gap was scoping *within* the request to the one field that
+  needed it, not the endpoint matching itself.
+
+No MIME-type validation is performed by this exclusion — it only stops the
+WAF from flagging base64 noise as an attack. A `data:text/html;...` payload
+sent as the `avatar` field itself still passes the WAF unblocked by design
+(it's still base64-encoded "noise" to these rules). The application layer
+is expected to validate that `avatar` is actually image data — not yet
+implemented as of this revision.
 
 ## `exclusions.conf` — Vite dev server false positive
 
@@ -118,6 +150,9 @@ to end, not assumed:
   - `POST /forum/posts` with `' OR 1=1 --` in the body → `403` (WAF)
   - `POST /forum/posts` with `<script>alert(1)</script>` in the body →
     `403` (WAF)
+- `PATCH /users/me` with a `data:` scheme + base64 payload in `username` or
+  `email` (not `avatar`) → `403` (WAF), confirmed after the v2 fix above.
+  Before the fix, the same payloads returned `200`.
 
 ## How to test
 
@@ -129,7 +164,9 @@ to end, not assumed:
 3. If something is blocked, `docker compose logs nginx | grep -i
    modsecurity` shows the matched rule ID and message — identify whether
    it's a genuine false positive (add a scoped exclusion) or a real risk
-   (leave it blocking).
+   (leave it blocking). For the full matched-rule detail (not just the
+   summary line), read `/var/log/modsecurity/audit.log` inside the
+   container instead of the error log.
 4. Confirm real attacks are still blocked:
    ```bash
    curl -k -X POST https://localhost/forum/posts \
@@ -140,6 +177,20 @@ to end, not assumed:
      -d '{"title":"test","content":"<script>alert(1)</script>"}'
    ```
    Both should return `403`.
+5. If touching the avatar exclusion specifically, confirm both sides of the
+   scope in the same pass — the legitimate case must still pass, and
+   fields outside `avatar` must still be blocked:
+   ```bash
+   # must stay 200 — legitimate avatar upload
+   curl -k -X PATCH https://localhost/users/me \
+     -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+     -d '{"avatar":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="}'
+
+   # must be 403 — same kind of payload, different field
+   curl -k -X PATCH https://localhost/users/me \
+     -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+     -d '{"username":"data:text/html;base64,PHNjcmlwdD4="}'
+   ```
 
 ## Status
 
@@ -150,3 +201,10 @@ to end, not assumed:
 - [x] Verified against real app traffic (forum flows) with no unresolved
       false positives
 - [x] Verified against simulated SQLi/XSS attacks — both blocked
+- [x] Avatar exclusion re-scoped to `ARGS:json.avatar` only, after a
+      pentest pass confirmed the original `ctl:ruleRemoveById` version was
+      exploitable via other fields on the same endpoint (`username`,
+      `email`)
+- [ ] Avatar field still has no application-level MIME-type/size validation
+      (WAF exclusion only prevents false positives, not misuse) — tracked
+      separately, not yet implemented
