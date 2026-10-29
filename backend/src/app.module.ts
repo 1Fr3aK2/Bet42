@@ -10,6 +10,7 @@ import { CryptoModule } from './crypto/crypto.module';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { PublicApiModule } from './public-api/public-api.module';
 import { BetsModule } from './bets/bets.module';
+import { AnalyticsModule } from './analytics/analytics.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { BetsModule } from './bets/bets.module';
 	  EventEmitterModule.forRoot(),
     PublicApiModule,
     BetsModule,
+    AnalyticsModule,
   ],
   controllers: [],
   providers: [],
