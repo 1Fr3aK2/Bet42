@@ -35,6 +35,15 @@ volumes:
   rather than editing the CRS's own rule files, keeps customizations isolated
   and upgrade-safe.
 
+### Local rule IDs in use
+
+| ID        | Purpose                                              |
+|-----------|------------------------------------------------------|
+| `900200`  | Allowed HTTP methods (REST)                          |
+| `1000001` | Base64 avatar exclusion (`PATCH /users/me`)          |
+| `1000002` | PromQL exclusion for Grafana (`POST /grafana/api/ds/query`) |
+| `1000003` | PromQL exclusion for Prometheus (`/prometheus/api/v1/`) |
+
 ## `before-crs.conf` — allowing REST methods
 
 ```apache
@@ -86,7 +95,7 @@ trips several CRS rules detecting PHP injection (`934170`), XSS data
 attributes (`941130`, `941170`), and Unix command injection (`932235`,
 `932236`, `932260`).
 
-**v2 (this revision):** the original version of this exclusion used
+**v2:** the original version of this exclusion used
 `ctl:ruleRemoveById`, which disables the listed rules for the *entire*
 request, not just the `avatar` field. Since `PATCH /users/me` also accepts
 other fields (`username`, `email`), those rules were silently disabled for
@@ -117,6 +126,79 @@ sent as the `avatar` field itself still passes the WAF unblocked by design
 is expected to validate that `avatar` is actually image data — not yet
 implemented as of this revision.
 
+## `before-crs.conf` — PromQL for the monitoring endpoints
+
+```apache
+SecRule REQUEST_METHOD "@streq POST" \
+  "id:1000002,\
+  phase:1,\
+  nolog,\
+  pass,\
+  t:none,\
+  chain"
+  SecRule REQUEST_URI "@beginsWith /grafana/api/ds/query" \
+    "t:none,\
+    ctl:ruleRemoveTargetByTag=attack-sqli;ARGS:json.queries.array_0.expr,\
+    ctl:ruleRemoveTargetByTag=attack-rce;ARGS:json.queries.array_0.expr,\
+    ctl:ruleRemoveTargetById=941380;ARGS:json.queries.array_0.legendFormat"
+
+SecRule REQUEST_URI "@beginsWith /prometheus/api/v1/" \
+  "id:1000003,\
+  phase:1,\
+  nolog,\
+  pass,\
+  t:none,\
+  ctl:ruleRemoveTargetByTag=attack-sqli;ARGS:query,\
+  ctl:ruleRemoveTargetByTag=attack-rce;ARGS:query"
+```
+
+PromQL is a query language, not SQL or shell, but its operators and brackets
+trip many CRS rules:
+
+- `sum(rate(x[1m])) by (route)` matches `942150`, `942410` and `932240`
+- `up == 0` matches `942120`
+- `... * 100` matches `942370`
+- Grafana legend templates such as `{{route}}` match the AngularJS
+  template-injection rule `941380`
+
+Without this exclusion, 4 of the 12 Grafana panels showed "No data" (the
+WAF returned `403`) and common Prometheus queries were refused.
+
+**Why by tag instead of by ID:** any PromQL operator can trip a different
+rule, so listing IDs one by one would be a whack-a-mole. Instead, the
+SQL-injection and command-injection groups (tags `attack-sqli` and
+`attack-rce`) are removed, but only for the PromQL fields:
+
+| Rule | Endpoint                         | Field excluded                          | What is removed            |
+|------|----------------------------------|-----------------------------------------|----------------------------|
+| `1000002` | `POST /grafana/api/ds/query` | `ARGS:json.queries.array_0.expr`        | `attack-sqli`, `attack-rce` |
+| `1000002` | `POST /grafana/api/ds/query` | `ARGS:json.queries.array_0.legendFormat`| rule `941380` only          |
+| `1000003` | `/prometheus/api/v1/*`       | `ARGS:query`                            | `attack-sqli`, `attack-rce` |
+
+What keeps this safe:
+
+- **Field-scoped, not request-scoped.** Everything uses
+  `ctl:ruleRemoveTarget...`, so every other field and route is still fully
+  inspected by the whole CRS.
+- **XSS and all other rule groups still inspect the PromQL fields.** Only
+  `attack-sqli` and `attack-rce` are removed from them (and `941380` from
+  `legendFormat`).
+- **Grafana's endpoint requires a login**, so it is not reachable by an
+  anonymous attacker. The Prometheus endpoint is read-only (query API).
+
+Things worth knowing if this is touched again:
+
+- The `array_0` in `json.queries.array_0.expr` is how ModSecurity names the
+  first element of the `queries` JSON array. Each dashboard panel currently
+  sends one query, so `array_0` is enough. A panel with several queries per
+  request (`array_1`, ...) would have its extra queries still inspected and
+  could be blocked again — extend the targets if that happens.
+- The `json.` prefix matters here for the same reason as in the avatar
+  exclusion (see above).
+- Rule `1000003` has no method condition, so it applies to any method on
+  `/prometheus/api/v1/`; this is intentional, since the Prometheus query API
+  accepts both `GET` and `POST`.
+
 ## `exclusions.conf` — Vite dev server false positive
 
 ```apache
@@ -137,7 +219,7 @@ revisiting at that point rather than assuming it should stay indefinitely.
 
 ## Verification
 
-Both false positives above were found by testing real application flows end
+All false positives above were found by testing real application flows end
 to end, not assumed:
 
 - `/forum` GETs (posts, comments, listing) — clean, no false blocks.
@@ -153,6 +235,9 @@ to end, not assumed:
 - `PATCH /users/me` with a `data:` scheme + base64 payload in `username` or
   `email` (not `avatar`) → `403` (WAF), confirmed after the v2 fix above.
   Before the fix, the same payloads returned `200`.
+- Grafana dashboards: before the PromQL exclusion, 4 of the 12 panels
+  returned `403` ("No data"); the PromQL exclusion exists to fix exactly
+  these.
 
 ## How to test
 
@@ -191,6 +276,23 @@ to end, not assumed:
      -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
      -d '{"username":"data:text/html;base64,PHNjcmlwdD4="}'
    ```
+6. If touching the PromQL exclusions, confirm both sides again — the
+   legitimate query must pass, and the same kind of payload outside the
+   excluded field (or XSS inside it) must still be blocked:
+   ```bash
+   # must NOT be 403 — legitimate PromQL on the Prometheus API
+   curl -k -G https://localhost/prometheus/api/v1/query \
+     --data-urlencode 'query=sum(rate(http_requests_total[1m])) by (route)'
+
+   # must still be 403 — XSS inside the excluded field is still inspected
+   curl -k -G https://localhost/prometheus/api/v1/query \
+     --data-urlencode 'query=<script>alert(1)</script>'
+
+   # must still be 403 — SQLi in a field that is NOT excluded
+   curl -k -G https://localhost/prometheus/api/v1/query \
+     --data-urlencode "other=' OR 1=1 --"
+   ```
+   Then open the Grafana dashboards and confirm all 12 panels load data.
 
 ## Status
 
@@ -205,6 +307,12 @@ to end, not assumed:
       pentest pass confirmed the original `ctl:ruleRemoveById` version was
       exploitable via other fields on the same endpoint (`username`,
       `email`)
+- [x] PromQL exclusions added for Grafana (`/grafana/api/ds/query`) and
+      Prometheus (`/prometheus/api/v1/`), scoped by tag to the query fields
+      only
+- [ ] Confirm the negative cases for the PromQL exclusions (XSS in `query`
+      still `403`, other fields still inspected) and that all 12 Grafana
+      panels load
 - [ ] Avatar field still has no application-level MIME-type/size validation
       (WAF exclusion only prevents false positives, not misuse) — tracked
       separately, not yet implemented
