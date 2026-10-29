@@ -36,6 +36,9 @@ default, deployed with a single command, and observable in production.
 - **Operations**: centralised logs (Elasticsearch, Logstash, Kibana, Filebeat),
   monitoring and alerts (Prometheus, Grafana), health checks, a status page and
   daily database backups.
+- **Analytics dashboard**: charts of each player's results (profit, win rate,
+  results by coin and direction), filters by period, coin and direction, live
+  updates, and CSV, JSON and PDF export.
 - **Legal pages**: Privacy Policy and Terms of Service, linked from the footer.
 
 ## Instructions
@@ -119,6 +122,7 @@ sealed, and this unseals it before the backend starts.
 
 - `bash scripts/test-public-api.sh`: tests the public admin API (asks for the API key).
 - `bash scripts/test-bets.sh`: tests the betting engine end to end (about 75 seconds).
+- `bash scripts/test-analytics.sh`: tests the analytics endpoint and the real-time socket (about 10 seconds).
 
 ## Team Information
 
@@ -291,6 +295,7 @@ in `backend/prisma/migrations/`, applied automatically at startup.
 | Roles and administration | Roles user / moderator / administrator; admin page to list users and change roles | Pedro, Duarte |
 | Live prices | BTC and ETH from the Kraken WebSocket API, broadcast to every browser with Socket.IO; price chart | Pedro (backend), Duarte (frontend) |
 | Betting engine | Balance and bets in the database; 60-second bets settled by the server with live prices; atomic balance updates; history | Miguel (backend), Duarte (frontend) |
+| Analytics dashboard | Cumulative profit, profit by day, results, and win rate by coin and direction; filters by period, coin and direction; live updates through a per-user socket; CSV, JSON and PDF export | Miguel |
 | Forum | Posts, comments, editing and deleting your own content, search with filters, sorting and pagination | Hugo (backend), Duarte (frontend) |
 | Moderation | Reports, rule-based automatic moderation (scam, spam and abuse patterns), moderators' review of reports and held content, moderation log | Hugo (backend), Duarte (frontend) |
 | Public admin API | 8 endpoints (users, roles, reports, moderation, posts) with an API key, rate limiting (nginx and Redis) and Swagger documentation | Hugo, Rafael |
@@ -308,18 +313,19 @@ in `backend/prisma/migrations/`, applied automatically at startup.
 
 | # | Module | Category | Type | Points | Member(s) |
 |---|--------|----------|------|--------|-----------|
-| 1 | Use a framework for both the frontend and the backend | Web | Major | 2 | Duarte, Pedro, Hugo |
-| 2 | Real-time features using WebSockets | Web | Major | 2 | Pedro, Duarte |
+| 1 | Use a framework for both the frontend and the backend | Web | Major | 2 | Duarte, Pedro, Hugo, Miguel |
+| 2 | Real-time features using WebSockets | Web | Major | 2 | Pedro, Duarte, Miguel |
 | 3 | Public API with an API key, rate limiting and documentation | Web | Major | 2 | Hugo, Rafael |
 | 4 | WAF / ModSecurity (hardened) and HashiCorp Vault | Cybersecurity | Major | 2 | Rafael, Miguel |
 | 5 | Log management with ELK | Devops | Major | 2 | Rafael, Miguel |
 | 6 | Monitoring with Prometheus and Grafana | Devops | Major | 2 | Rafael, Miguel |
-| 7 | Use an ORM for the database | Web | Minor | 1 | Pedro, Hugo |
+| 7 | Use an ORM for the database | Web | Minor | 1 | Pedro, Hugo, Miguel |
 | 8 | Advanced search with filters, sorting and pagination | Web | Minor | 1 | Hugo, Duarte |
 | 9 | Health check and status page, automated backups and disaster recovery | Devops | Minor | 1 | Rafael |
-| | **Total** | | | **15** | |
+| 10 | Advanced analytics dashboard with data visualization | Data and Analytics | Major | 2 | Miguel |
+| | **Total** | | | **17** | |
 
-The minimum is 14 points; the extra point counts as bonus. Not claimed because
+The minimum is 14 points; the 3 extra points count as bonus (at most 5). Not claimed because
 they are not complete: user interaction (needs chat and friends), standard user
 management (needs friends and online status), advanced permissions (needs user
 deletion), languages, additional browsers, and content moderation AI (our
@@ -332,11 +338,13 @@ moderation is rule-based, not AI).
 1. **Frameworks (React + NestJS)**: both give a structure the whole team can
    follow. The frontend is a React application (`frontend/`); the backend is a
    NestJS application split into modules (`backend/src/`: auth, users, crypto,
-   bets, forum, moderation, public-api, health, metrics, vault).
+   bets, analytics, forum, moderation, public-api, health, metrics, vault).
 2. **Real-time WebSockets**: prices are the heart of the game. `KrakenService`
    keeps a WebSocket connection to Kraken (reconnecting after 5 seconds if it
    drops) and emits every ticker; `CryptoGateway` broadcasts it to all browsers
-   with one Socket.IO event, and the Socket.IO client reconnects by itself.
+   with one Socket.IO event, and the Socket.IO client reconnects by itself. A
+   second namespace, `/bets`, checks the login token and tells each user, in a
+   room of their own, when one of their bets is placed or settled.
 3. **Public API**: lets administrators and scripts manage users, reports and
    posts without the interface. `backend/src/public-api` exposes 8 endpoints
    under `/api/admin` (GET, POST, PUT, PATCH and DELETE), checks the
@@ -365,6 +373,14 @@ moderation is rule-based, not AI).
    Vault and Elasticsearch; `/status` shows it as a page; a container dumps PostgreSQL every
    day and keeps 7 days; `docs/backup-scripts/Disaster-Recovery.md` explains how
    to restore.
+10. **Analytics dashboard**: a trading game lives on its results, and the
+    subject suggests this module for a trading simulator.
+    `GET /users/me/analytics` (`backend/src/analytics`) computes the figures for
+    the chosen period, coin and direction. The page at `#/analytics` (Analytics
+    button in the navbar) draws 4 Recharts charts with tooltips and data
+    tables, reloads when the `/bets` socket says a bet changed, and exports
+    CSV, JSON and a PDF report written without a PDF library.
+    `scripts/test-analytics.sh` tests it.
 
 ## Individual Contributions
 
@@ -401,6 +417,7 @@ moderation is rule-based, not AI).
 ### Miguel Dias
 
 - **Betting engine** (`backend/src/bets`): balance, placing bets, history, and the settlement loop; new accounts start with 1000 T$ set by the server; `Bet` table and migration; `scripts/test-bets.sh`.
+- **Analytics dashboard** (module Data and Analytics, Major): `GET /users/me/analytics`, the `/bets` real-time socket, and the dashboard page with 4 charts, filters, live updates and CSV, JSON and PDF export; `scripts/test-analytics.sh`.
 - **Project audit** against the subject, and fixes for the problems that would have failed the evaluation: Filebeat not starting on hosts with umask 002, Kibana not starting with the `.env.example` values, and Grafana panels and Prometheus queries blocked by the WAF.
 - **Privacy Policy and Terms of Service** pages and the footer.
 - **This README**.
