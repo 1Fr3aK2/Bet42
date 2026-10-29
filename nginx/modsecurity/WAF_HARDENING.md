@@ -1,210 +1,654 @@
-# WAF/ModSecurity Hardening (`nginx/modsecurity/`)
+# Filebeat (`logging/filebeat/`)
 
-This document describes hardening the WAF for the "WAF/ModSecurity (hardened)
-+ HashiCorp Vault for secrets" module (the WAF half — see `VAULT_PRODUCTION.md`
-for the Vault half).
+## What it does
 
-## Overview
+Filebeat is the log shipper of the ELK stack. It collects logs from two sources:
 
-The project uses the `owasp/modsecurity-crs:4-nginx` image, which bundles
-Nginx, ModSecurity, and the OWASP Core Rule Set (CRS). Out of the box it runs
-with `PARANOIA=1`, the CRS's most permissive detection level — enough to be
-"a WAF exists", but not enough to be considered hardened.
+* Docker container logs.
+* The ModSecurity (WAF) audit log.
 
-## What changed
+It forwards all collected events to Logstash on port `5044`, where they are either parsed and enriched or forwarded unchanged to Elasticsearch.
+
+For ModSecurity audit events, Filebeat adds the field:
+
+```text
+log_type: modsec_audit
+```
+
+This tag is important because Logstash uses it to distinguish WAF audit events from all other logs.
+
+---
+
+## Why it was needed
+
+The application runs several Docker containers, and their logs need to be collected centrally instead of being inspected individually with commands such as `docker logs`.
+
+Filebeat provides the collection layer between the containers/WAF and Logstash:
+
+```text
+Docker containers ────────┐
+                          ├──▶ Filebeat ─▶ Logstash ─▶ Elasticsearch ─▶ Kibana
+ModSecurity audit.log ────┘
+```
+
+This makes Filebeat responsible for **collecting and shipping** logs, while Logstash is responsible for the **transformation and routing** of the logs.
+
+The distinction is important for the ELK module requirement: Filebeat handles log collection, while the Logstash pipeline performs the processing of the ModSecurity events.
+
+---
+
+## Data flow
+
+```text
+Docker container logs
+        │
+        ▼
+/var/lib/docker/containers/*/*.log
+        │
+        ▼
+     Filebeat
+        │
+        │
+        ├──────────────────────────────┐
+        │                              │
+        ▼                              ▼
+ModSecurity audit log              Other logs
+/var/log/modsecurity/audit.log     Docker container logs
+        │                              │
+        │                              │
+        └──────────────┬───────────────┘
+                       ▼
+                 Logstash :5044
+                       │
+                       ▼
+                 Elasticsearch
+                       │
+                       ▼
+                    Kibana
+```
+
+---
+
+## How it runs
+
+The Filebeat image is defined by the accompanying `Dockerfile`:
+
+```dockerfile
+FROM docker.elastic.co/beats/filebeat:8.19.18
+COPY --chown=root:root filebeat.yml /usr/share/filebeat/filebeat.yml
+# Filebeat refuses a config file writable by group/others. The copied file
+# keeps the host's mode (664 with umask 002), so fix it in the image.
+USER root
+RUN chmod go-w /usr/share/filebeat/filebeat.yml
+```
+
+The image uses **Filebeat 8.19.18**, matching the Elastic stack version used by the project.
+
+The custom configuration is copied into Filebeat's standard configuration location:
+
+```text
+/usr/share/filebeat/filebeat.yml
+```
+
+Ownership by `root` is not enough on its own. Filebeat also checks the file
+mode and refuses to start if the configuration file is writable by group or
+others. `COPY` preserves the mode of the file on the host (`664` with
+`umask 002`), so the `chmod go-w` step normalizes it to `644` inside the
+image.
+
+This makes the build independent of the host's `umask` and of the file mode
+stored in the repository: the same image is produced on any machine.
+
+The `USER root` instruction is explicit because the `chmod` step needs it, and
+the container reads Docker's log files under `/var/lib/docker/containers`,
+which are not readable by unprivileged users.
+
+---
+
+## Configuration
+
+The complete configuration is contained in:
+
+```text
+logging/filebeat/filebeat.yml
+```
+
+It contains three main parts:
+
+1. Docker log collection.
+2. ModSecurity audit log collection.
+3. Logstash output.
+
+---
+
+## Docker logs
+
+### Autodiscover
+
+Docker container logs are collected using Filebeat's Docker autodiscover provider:
 
 ```yaml
-environment:
-  PARANOIA: "2"
-  BLOCKING_PARANOIA: "2"
-volumes:
-  - ./nginx/modsecurity/before-crs.conf:/etc/modsecurity.d/owasp-crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf
-  - ./nginx/modsecurity/exclusions.conf:/etc/modsecurity.d/owasp-crs/rules/RESPONSE-999-EXCLUSION-RULES-AFTER-CRS.conf
+filebeat.autodiscover:
+  providers:
+    - type: docker
+      hints.enabled: true
+      hints.default_config:
+        type: container
+        paths:
+          - /var/lib/docker/containers/${data.container.id}/*.log
 ```
 
-- **`PARANOIA` / `BLOCKING_PARANOIA` raised to 2** — the CRS distinguishes
-  detection level (what's evaluated/logged) from blocking level (what's
-  actually rejected); both were set to 2. Level 3 was considered but
-  rejected as likely overkill for this project's scope, generating
-  significantly more false positives for marginal extra protection.
-- **`REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf`** and
-  **`RESPONSE-999-EXCLUSION-RULES-AFTER-CRS.conf`** are placeholder files the
-  CRS itself expects to be overridden for local exclusions — one for rules
-  that must run *before* the CRS loads (e.g. setting `tx.allowed_methods`),
-  one for rules that run *after* (e.g. `SecRuleRemoveById`). Using these,
-  rather than editing the CRS's own rule files, keeps customizations isolated
-  and upgrade-safe.
+The `docker` provider allows Filebeat to automatically discover containers and start log inputs for them.
 
-## `before-crs.conf` — allowing REST methods
+The `${data.container.id}` variable is replaced with the ID of each discovered container.
 
-```apache
-SecAction \
-  "id:900200,\
-  phase:1,\
-  nolog,\
-  pass,\
-  t:none,\
-  setvar:'tx.allowed_methods=GET HEAD POST OPTIONS PATCH PUT DELETE'"
+The resulting path points to Docker's standard JSON log files:
+
+```text
+/var/lib/docker/containers/<container-id>/*.log
 ```
 
-The CRS's method-enforcement rule (`911100`) only allows
-`GET HEAD POST OPTIONS` by default. This project's REST API relies on
-`PATCH` (e.g. `PATCH /forum/posts/:id`, `PATCH /forum/reports/:id/resolve`)
-and would need `DELETE`/`PUT` too, so without this exclusion every
-partial-update endpoint was rejected by the WAF before it ever reached the
-backend. `id:900200` is a locally-chosen ID inside the CRS's reserved range
-for custom rules (900000–900999), avoiding collisions with CRS rule IDs.
+This means the configuration does not need to manually list every application container.
 
-This is a WAF-level allowance only — it does not grant any application
-permission. Whether a specific user is allowed to edit or delete a specific
-post is authorization logic that belongs to (and is enforced by) the
-backend, not the WAF. The WAF only decides whether the HTTP method is
-permitted to exist for this API at all.
+---
 
-## `before-crs.conf` — Base64 Avatar Upload Exclusion
+## Docker hints
 
-```apache
-SecRule REQUEST_METHOD "@streq PATCH" \
-  "id:1000001,\
-  phase:1,\
-  nolog,\
-  pass,\
-  t:none,\
-  chain"
-  SecRule REQUEST_URI "@rx ^/users/me(/|\?|$)" \
-    "t:none,\
-    ctl:ruleRemoveTargetById=934170;ARGS:json.avatar,\
-    ctl:ruleRemoveTargetById=941130;ARGS:json.avatar,\
-    ctl:ruleRemoveTargetById=941170;ARGS:json.avatar,\
-    ctl:ruleRemoveTargetById=932235;ARGS:json.avatar,\
-    ctl:ruleRemoveTargetById=932236;ARGS:json.avatar,\
-    ctl:ruleRemoveTargetById=932260;ARGS:json.avatar"
+Docker hints are enabled:
+
+```yaml
+hints.enabled: true
 ```
 
-A base64 data URL (`data:image/...;base64,...`) sent during profile updates
-trips several CRS rules detecting PHP injection (`934170`), XSS data
-attributes (`941130`, `941170`), and Unix command injection (`932235`,
-`932236`, `932260`).
+Hints allow container metadata to influence how Filebeat collects logs.
 
-**v2 (this revision):** the original version of this exclusion used
-`ctl:ruleRemoveById`, which disables the listed rules for the *entire*
-request, not just the `avatar` field. Since `PATCH /users/me` also accepts
-other fields (`username`, `email`), those rules were silently disabled for
-them too. This was confirmed exploitable during a pentest pass: a `data:`
-scheme + base64 payload (e.g. `data:text/html;base64,PHNjcmlwdD4=`) sent in
-`username` or `email` was accepted (`200`) instead of blocked, before this
-fix.
+A default configuration is provided:
 
-Fixed by scoping the exclusion to the specific field with
-`ctl:ruleRemoveTargetById=<id>;ARGS:json.avatar` instead of
-`ctl:ruleRemoveById=<id>`. Two things worth knowing if this is touched
-again:
-
-- The `json.` prefix matters: for JSON request bodies, ModSecurity names
-  the variable `ARGS:json.<field>`, not `ARGS:<field>`. Using the latter
-  silently has no effect — it was tried first and caused the *legitimate*
-  avatar upload to be falsely blocked, because the target rules were never
-  actually being excluded from anything.
-- The `@rx ^/users/me(/|\?|$)` regex scoping to the one endpoint (handling
-  trailing slash / query string) was correct from the start and needed no
-  change — the gap was scoping *within* the request to the one field that
-  needed it, not the endpoint matching itself.
-
-No MIME-type validation is performed by this exclusion — it only stops the
-WAF from flagging base64 noise as an attack. A `data:text/html;...` payload
-sent as the `avatar` field itself still passes the WAF unblocked by design
-(it's still base64-encoded "noise" to these rules). The application layer
-is expected to validate that `avatar` is actually image data — not yet
-implemented as of this revision.
-
-## `exclusions.conf` — Vite dev server false positive
-
-```apache
-SecRuleRemoveById 930121
+```yaml
+hints.default_config:
+  type: container
+  paths:
+    - /var/lib/docker/containers/${data.container.id}/*.log
 ```
 
-Rule `930121` (Local File Inclusion detection) flags any request whose
-`Referer` header contains the string `node_modules/` — a legitimate
-heuristic against LFI attempts, but it also matches the Vite dev server's
-own asset requests (`/node_modules/.vite/deps/...`), which are normal in
-development.
+This acts as the fallback configuration for containers that do not provide more specific Filebeat hints.
 
-**This is a dev-mode-specific exclusion.** The frontend currently runs via
-the Vite dev server, not a production build. If/when the frontend is served
-as a static production build, `node_modules/`-referencing requests should no
-longer occur, and this exclusion may no longer be necessary — worth
-revisiting at that point rather than assuming it should stay indefinitely.
+As a result, normal Docker container logs are collected without requiring a separate input for every service.
 
-## Verification
+---
 
-Both false positives above were found by testing real application flows end
-to end, not assumed:
+## ModSecurity audit log
 
-- `/forum` GETs (posts, comments, listing) — clean, no false blocks.
-- `/forum/reports`, `/forum/moderation/*` (POST, PATCH) — initially blocked
-  by the method-enforcement rule; fixed by `before-crs.conf`; confirmed the
-  request now reaches the backend (a `400` from the app's own DTO validation,
-  not a `403` from the WAF).
-- Attack simulation confirms actual protection, not just that the container
-  starts:
-  - `POST /forum/posts` with `' OR 1=1 --` in the body → `403` (WAF)
-  - `POST /forum/posts` with `<script>alert(1)</script>` in the body →
-    `403` (WAF)
-- `PATCH /users/me` with a `data:` scheme + base64 payload in `username` or
-  `email` (not `avatar`) → `403` (WAF), confirmed after the v2 fix above.
-  Before the fix, the same payloads returned `200`.
+The ModSecurity audit log is collected using a separate Filebeat input:
 
-## How to test
+```yaml
+filebeat.inputs:
+  - type: log
+    enabled: true
+    paths:
+      - /var/log/modsecurity/audit.log
+```
 
-1. `docker compose up -d nginx` after any change to these files.
-2. Exercise real app flows (forum posts, comments, reports, moderation) and
-   confirm nothing legitimate gets an HTML `403 Forbidden` page (a JSON
-   error from the app itself, e.g. `400`/`404`, is fine — that means the
-   request passed the WAF).
-3. If something is blocked, `docker compose logs nginx | grep -i
-   modsecurity` shows the matched rule ID and message — identify whether
-   it's a genuine false positive (add a scoped exclusion) or a real risk
-   (leave it blocking). For the full matched-rule detail (not just the
-   summary line), read `/var/log/modsecurity/audit.log` inside the
-   container instead of the error log.
-4. Confirm real attacks are still blocked:
-   ```bash
-   curl -k -X POST https://localhost/forum/posts \
-     -H "Content-Type: application/json" \
-     -d '{"title":"test","content":"'"'"' OR 1=1 --"}'
-   curl -k -X POST https://localhost/forum/posts \
-     -H "Content-Type: application/json" \
-     -d '{"title":"test","content":"<script>alert(1)</script>"}'
-   ```
-   Both should return `403`.
-5. If touching the avatar exclusion specifically, confirm both sides of the
-   scope in the same pass — the legitimate case must still pass, and
-   fields outside `avatar` must still be blocked:
-   ```bash
-   # must stay 200 — legitimate avatar upload
-   curl -k -X PATCH https://localhost/users/me \
-     -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-     -d '{"avatar":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="}'
+This is separate from the Docker autodiscover input because the audit log is exposed as a regular file rather than being collected directly from a Docker container's standard output.
 
-   # must be 403 — same kind of payload, different field
-   curl -k -X PATCH https://localhost/users/me \
-     -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-     -d '{"username":"data:text/html;base64,PHNjcmlwdD4="}'
-   ```
+The file is shared from the Nginx/ModSecurity environment into the Filebeat container.
 
-## Status
+---
 
-- [x] `PARANOIA`/`BLOCKING_PARANOIA` raised from default (1) to 2
-- [x] Method enforcement extended for PATCH/PUT/DELETE (REST API requirement)
-- [x] Vite dev-server false positive excluded, with a note to revisit for
-      production builds
-- [x] Verified against real app traffic (forum flows) with no unresolved
-      false positives
-- [x] Verified against simulated SQLi/XSS attacks — both blocked
-- [x] Avatar exclusion re-scoped to `ARGS:json.avatar` only, after a
-      pentest pass confirmed the original `ctl:ruleRemoveById` version was
-      exploitable via other fields on the same endpoint (`username`,
-      `email`)
-- [ ] Avatar field still has no application-level MIME-type/size validation
-      (WAF exclusion only prevents false positives, not misuse) — tracked
-      separately, not yet implemented
+## Identifying WAF audit events
+
+The most important part of the ModSecurity input is:
+
+```yaml
+fields:
+  log_type: modsec_audit
+fields_under_root: true
+```
+
+This adds the following field to every event read from the ModSecurity audit log:
+
+```text
+log_type = modsec_audit
+```
+
+Because `fields_under_root` is enabled, the field is placed directly at the root of the event instead of being nested under another field.
+
+For example:
+
+```json
+{
+  "log_type": "modsec_audit",
+  "message": "{ ... ModSecurity JSON ... }"
+}
+```
+
+This field is later used by Logstash:
+
+```text
+if [log_type] == "modsec_audit"
+```
+
+Only events carrying this tag enter the ModSecurity parsing and enrichment logic.
+
+This means **Filebeat is responsible for classifying WAF events**, while Logstash is responsible for processing them.
+
+---
+
+## Why the `log_type` field matters
+
+Without the `log_type` field, Logstash would have to determine whether an event came from ModSecurity by inspecting the contents of the log itself.
+
+That would be less reliable and would unnecessarily couple the Logstash pipeline to the exact format of every incoming log.
+
+With the explicit tag:
+
+```text
+log_type = modsec_audit
+```
+
+the responsibilities are clearly separated:
+
+```text
+Filebeat
+   │
+   ├── Collect log
+   └── Identify ModSecurity audit log
+             │
+             ▼
+         Logstash
+             │
+             ├── Parse ModSecurity JSON
+             ├── Extract useful fields
+             ├── Extract rule information
+             └── Route to the appropriate index
+```
+
+---
+
+## Output
+
+All Filebeat events are sent to Logstash:
+
+```yaml
+output.logstash:
+  hosts: ["logstash:5044"]
+```
+
+Filebeat therefore does not send logs directly to Elasticsearch.
+
+The communication path is:
+
+```text
+Filebeat ──▶ Logstash:5044 ──▶ Elasticsearch
+```
+
+Port `5044` is the Beats input configured on the Logstash container.
+
+Because both services run on the Docker network, Filebeat can resolve:
+
+```text
+logstash
+```
+
+as the Logstash container hostname.
+
+The port does not need to be exposed to the host machine.
+
+---
+
+## Logging
+
+Filebeat's own logging level is configured as:
+
+```yaml
+logging.level: info
+```
+
+This provides normal operational information without enabling the much more verbose debug logging.
+
+For troubleshooting, the level can temporarily be increased, but `info` is appropriate for normal operation.
+
+---
+
+## Relationship with Logstash
+
+Filebeat and Logstash have deliberately different responsibilities.
+
+### Filebeat
+
+Filebeat:
+
+* Discovers Docker containers.
+* Reads Docker container logs.
+* Reads the ModSecurity audit log.
+* Tags ModSecurity events with `log_type: modsec_audit`.
+* Sends events to Logstash.
+
+### Logstash
+
+Logstash:
+
+* Receives events from Filebeat on port `5044`.
+* Detects `modsec_audit` events.
+* Parses the ModSecurity JSON.
+* Extracts useful WAF fields.
+* Extracts matched rule information.
+* Extracts the anomaly score.
+* Sets the event timestamp.
+* Routes WAF and non-WAF events to different Elasticsearch indices.
+
+The separation can therefore be represented as:
+
+```text
+                COLLECTION                 PROCESSING
+                    │                          │
+                    ▼                          ▼
+              ┌──────────┐              ┌───────────┐
+              │ Filebeat │─────────────▶│ Logstash  │
+              └──────────┘              └───────────┘
+                    │                          │
+          ┌─────────┴─────────┐                │
+          │                   │                │
+          ▼                   ▼                ▼
+     Docker logs       ModSecurity       Parse / enrich /
+                          audit.log       route events
+```
+
+---
+
+## Files
+
+The Filebeat configuration consists of:
+
+```text
+logging/filebeat/
+├── Dockerfile
+├── filebeat.yml
+└── README.md
+```
+
+### `Dockerfile`
+
+Builds the Filebeat image using Elastic's official `8.19.18` image, copies the project configuration into the container and removes group/other write permissions from `filebeat.yml` (Filebeat refuses to start otherwise).
+
+### `filebeat.yml`
+
+Defines:
+
+* Docker autodiscovery.
+* Docker log paths.
+* ModSecurity audit log input.
+* The `modsec_audit` event tag.
+* Logstash as the output.
+* Filebeat logging level.
+
+---
+
+## How to verify it works
+
+### 1. Check that the Filebeat container is running
+
+```bash
+docker ps
+```
+
+The Filebeat container should be running alongside the other ELK services.
+
+---
+
+### 2. Check Filebeat logs
+
+```bash
+docker logs filebeat
+```
+
+Look for messages indicating that Filebeat has started successfully and is communicating with Logstash.
+
+If the container has a different name, use:
+
+```bash
+docker ps --format '{{.Names}}'
+```
+
+to find it.
+
+---
+
+### 3. Check the configuration file permissions
+
+```bash
+docker exec filebeat ls -l /usr/share/filebeat/filebeat.yml
+```
+
+The file should be owned by `root` and must not be writable by group or
+others (expected mode: `-rw-r--r--`, i.e. `644`).
+
+---
+
+### 4. Check the ModSecurity audit file
+
+Inside the Filebeat container:
+
+```bash
+docker exec filebeat ls -l /var/log/modsecurity/audit.log
+```
+
+The file should exist and contain the audit events generated by ModSecurity.
+
+---
+
+### 5. Generate a WAF event
+
+Trigger a request that is expected to be detected by the ModSecurity/OWASP CRS configuration.
+
+Then check the audit log:
+
+```bash
+docker exec nginx tail -n 1 /var/log/modsecurity/audit.log
+```
+
+The exact command may vary depending on how the audit log is mounted and formatted.
+
+---
+
+### 6. Verify the event reaches Logstash
+
+Check the Logstash logs:
+
+```bash
+docker logs logstash
+```
+
+The event should arrive through:
+
+```text
+logstash:5044
+```
+
+---
+
+### 7. Verify the `log_type` field
+
+In Kibana, a ModSecurity event should contain:
+
+```text
+log_type: modsec_audit
+```
+
+This confirms that Filebeat correctly classified the event before sending it to Logstash.
+
+---
+
+### 8. Verify Elasticsearch indices
+
+After Logstash processes the event, WAF events should appear in:
+
+```text
+waf-audit-YYYY.MM.dd
+```
+
+Other logs should appear in:
+
+```text
+transcendence-logs-YYYY.MM.dd
+```
+
+The actual parsing and routing of these events is performed by the Logstash pipeline.
+
+---
+
+## Design Notes
+
+### The config file must not be group/other-writable
+
+Filebeat validates the permissions of its configuration file and exits at
+startup with a permissions error if the file is writable by group or others.
+
+The file keeps the mode it has on the host when it is copied into the image
+(`664` with `umask 002`), and `--chown=root:root` only changes the owner, not
+the mode. The Dockerfile therefore runs:
+
+```dockerfile
+RUN chmod go-w /usr/share/filebeat/filebeat.yml
+```
+
+If Filebeat exits immediately after starting with a message about the config
+file permissions, check this step first.
+
+---
+
+### Only the configured audit file is collected
+
+The ModSecurity input specifically watches:
+
+```text
+/var/log/modsecurity/audit.log
+```
+
+If ModSecurity writes its audit data to a different path, Filebeat will not collect it unless the path is changed accordingly.
+
+---
+
+### The WAF tag depends on this input configuration
+
+Logstash expects:
+
+```text
+log_type = modsec_audit
+```
+
+If the field is removed, renamed, or moved from the event root, Logstash will no longer identify the event as a ModSecurity audit event.
+
+The relevant configuration is:
+
+```yaml
+fields:
+  log_type: modsec_audit
+fields_under_root: true
+```
+
+Therefore, this configuration and the Logstash conditional must remain consistent.
+
+---
+
+### Filebeat does not parse the ModSecurity JSON
+
+Filebeat deliberately does not perform the detailed ModSecurity parsing.
+
+It forwards the raw audit event and adds the identifying field:
+
+```text
+log_type: modsec_audit
+```
+
+The JSON parsing and extraction of fields such as:
+
+```text
+source_ip
+http_method
+uri
+http_code
+anomaly_score
+rule_id
+```
+
+are performed by Logstash.
+
+This keeps the collection layer simple and leaves transformation in the Logstash pipeline.
+
+---
+
+### Docker logs are not enriched by this configuration
+
+Normal Docker logs are collected and forwarded, but this Filebeat configuration does not perform application-specific parsing or transformation on them.
+
+They are subsequently handled by Logstash as non-WAF events.
+
+---
+
+### Logstash is required
+
+Filebeat is configured exclusively with:
+
+```yaml
+output.logstash:
+  hosts: ["logstash:5044"]
+```
+
+Therefore, Filebeat does not have a direct Elasticsearch output configured.
+
+If Logstash is unavailable, Filebeat cannot complete the normal delivery path to Elasticsearch until the connection is restored.
+
+---
+
+## Summary
+
+Filebeat is the **collection and shipping layer** of the logging architecture.
+
+Its main responsibilities are:
+
+```text
+1. Discover Docker containers
+2. Collect Docker logs
+3. Collect ModSecurity audit.log
+4. Mark WAF events as modsec_audit
+5. Send everything to Logstash
+```
+
+The complete ELK flow is:
+
+```text
+┌─────────────────────┐
+│ Docker containers   │
+│                     │
+│ application logs    │
+└──────────┬──────────┘
+           │
+           │
+           ▼
+     ┌───────────┐
+     │ Filebeat  │◀──── /var/log/modsecurity/audit.log
+     └─────┬─────┘
+           │
+           │ Beats :5044
+           ▼
+     ┌───────────┐
+     │ Logstash  │
+     │           │
+     │ Parse WAF │
+     │ Enrich    │
+     │ Route     │
+     └─────┬─────┘
+           │
+           ▼
+     ┌──────────────┐
+     │ Elasticsearch│
+     └──────┬───────┘
+            │
+            ▼
+        ┌────────┐
+        │ Kibana │
+        └────────┘
+```
+
+The key design decision is that **Filebeat collects and identifies the logs, while Logstash transforms and routes them**.
